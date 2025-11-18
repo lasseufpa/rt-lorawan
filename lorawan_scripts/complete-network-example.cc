@@ -12,11 +12,11 @@
  * network.
  */
 
-#include "ns3/building-allocator.h"
-#include "ns3/building-penetration-loss.h"
-#include "ns3/buildings-helper.h"
+#include "ns3/basic-energy-source-helper.h"
+#include "ns3/lora-radio-energy-model-helper.h"
 #include "ns3/class-a-end-device-lorawan-mac.h"
 #include "ns3/command-line.h"
+#include "ns3/file-helper.h"
 #include "ns3/constant-position-mobility-model.h"
 #include "ns3/correlated-shadowing-propagation-loss-model.h"
 #include "ns3/double.h"
@@ -52,7 +52,10 @@ NS_LOG_COMPONENT_DEFINE("ComplexLorawanNetworkExample");
 int nDevices = 20;           //!< Number of end device nodes to create
 int nGateways = 1;            //!< Number of gateway nodes to create
 double radiusMeters = 6400;         //!< Radius (m) of the deployment
+int spreadingFactor = 12;         //!< Radius (m) of the deployment
 double simulationTimeSeconds = 600; //!< Scenario duration (s) in simulated time
+string channelType = "log"; //!< type of stochastic channel
+
 
 // Channel model
 bool realisticChannelModel = false; //!< Whether to use a more realistic channel model with
@@ -60,29 +63,31 @@ bool realisticChannelModel = false; //!< Whether to use a more realistic channel
 
 int appPeriodSeconds = 60; //!< Duration (s) of the inter-transmission time of end devices
 
-// Output control
-bool printBuildingInfo = true; //!< Whether to print building information
 
-static std::ofstream g_outFile;
+static ofstream g_outFile;
+static ofstream packetReceived;
+static ofstream packetSent;
 bool stochasticChannel = true;
 
 uint32_t totalReceived = 0;
 uint32_t totalSent = 0;
 
 void
-RxCallback(Ptr<const Packet> packet, unsigned int iface)
-{   
-    std::cout << "Packet received" << std::endl;
-    totalReceived++;
-    std::cout << totalReceived << std::endl;
+RemainingEnergy( double oldValue, double remainingEnergy ) {
+    cout << "Remaining energy: " << remainingEnergy << " J" << endl;
 }
 
 void
-TxPacketSent(Ptr<const Packet> packet)
+RxCallback(Ptr<const Packet> packet, unsigned int iface)
+{ 
+    totalReceived++;
+}
+
+void
+TxPacketSent(Ptr<const Packet> packet, unsigned int iface)
 {
-    std::cout << "packet sent" << std::endl;
     totalSent++;
-    std::cout << totalSent << std::endl;
+
 }
 
 int
@@ -98,7 +103,12 @@ main(int argc, char* argv[])
     cmd.AddValue("appPeriod",
                  "The period in seconds to be used by periodically transmitting applications",
                  appPeriodSeconds);
-    cmd.AddValue("print", "Whether or not to print building information", printBuildingInfo);
+    cmd.AddValue("channelType",
+                 "Type of stochastic channel that will be used in the simulation",
+                 channelType);
+    cmd.AddValue("spreadingFactor",
+                 "Spreading factor number that will be used in the simulation",
+                 spreadingFactor);
     cmd.Parse(argc, argv);
 
     // Set up logging
@@ -129,12 +139,11 @@ main(int argc, char* argv[])
     /***********
      *  Setup  *
      ***********/
-
     g_outFile.open("lorawan-metrics.csv");
 
     // Create the time value from the period
     Time appPeriod = Seconds(appPeriodSeconds);
-
+    cout << "simulation " << simulationTimeSeconds << endl;
     // Mobility
     MobilityHelper mobility;
     mobility.SetPositionAllocator("ns3::UniformDiscPositionAllocator",
@@ -194,6 +203,7 @@ main(int argc, char* argv[])
             }
         }
         Ptr<MobilityModel> mobility = (*j)->GetObject<MobilityModel>();
+
         Vector position = mobility->GetPosition();
         position.x = positions[0];
         position.y = positions[1];
@@ -209,7 +219,7 @@ main(int argc, char* argv[])
     // Create the gateway nodes (allocate them uniformly on the disc)
     NodeContainer gateways;
     gateways.Create(nGateways);
-    Vector gatewayPosition = Vector(8.5, 21, 27);
+    Vector gatewayPosition = Vector(-150.40869141, 274.10128784, 24.95183182);
 
     Ptr<ListPositionAllocator> allocator = CreateObject<ListPositionAllocator>();
     // Make it so that nodes are at a certain height > 0
@@ -223,30 +233,27 @@ main(int argc, char* argv[])
     ifstream file2("path_gain.csv");
 
     Ptr<PropagationLossModel> loss;
-    if (stochasticChannel) 
+    // Create the lora channel object
+    if (channelType == "log") 
     {
-        // Create the lora channel object
-        // Ptr<LogDistancePropagationLossModel> lossDist = CreateObject<LogDistancePropagationLossModel>();
-        //lossDist->SetPathLossExponent(3.76);
-        //lossDist->SetReference(1, 7.7);
-
-        // Ptr<NakagamiPropagationLossModel> nakagami = CreateObject<NakagamiPropagationLossModel> ();
-        // // Configure Nakagami parameters (optional)
-        // nakagami->SetAttribute ("m0", DoubleValue (1.0));    // d < d0
-        // nakagami->SetAttribute ("m1", DoubleValue (1.5));    // d0 ≤ d < d1
-        // nakagami->SetAttribute ("m2", DoubleValue (3.0));    // d ≥ d1
-        // nakagami->SetAttribute ("Distance1", DoubleValue (80.0));
-        // nakagami->SetAttribute ("Distance2", DoubleValue (200.0));
-
+        Ptr<LogDistancePropagationLossModel> lossDist = CreateObject<LogDistancePropagationLossModel>();
+        lossDist->SetPathLossExponent(3.76);
+        lossDist->SetReference(1, 7.7);
+        loss = lossDist;
+    } else if (channelType == "nakagami") {
+        Ptr<NakagamiPropagationLossModel> nakagami = CreateObject<NakagamiPropagationLossModel> ();
+        nakagami->SetAttribute ("m0", DoubleValue (1.0));    // d < d0
+        nakagami->SetAttribute ("m1", DoubleValue (1.5));    // d0 ≤ d < d1
+        nakagami->SetAttribute ("m2", DoubleValue (3.0));    // d ≥ d1
+        nakagami->SetAttribute ("Distance1", DoubleValue (80.0));
+        nakagami->SetAttribute ("Distance2", DoubleValue (200.0));
+        loss = nakagami;
+    } else if (channelType == "twoRay") {
         Ptr<TwoRayGroundPropagationLossModel> tworay = CreateObject<TwoRayGroundPropagationLossModel> ();
-
-        // Configure attributes (optional)
         tworay->SetAttribute ("SystemLoss", DoubleValue (1.0));
         tworay->SetAttribute ("HeightAboveZ", DoubleValue (1.5)); // antenna height
-
-        // loss = lossDist;
         loss = tworay;
-    } else {
+    } else if (channelType == "rt") {
         Ptr<MatrixPropagationLossModel> matrixLoss = CreateObject<MatrixPropagationLossModel> ();
         for (auto gw = gateways.Begin(); gw != gateways.End(); ++gw)
         {
@@ -267,10 +274,10 @@ main(int argc, char* argv[])
                     }
                     try 
                     {
-                            positions[k] = stof(value);
-                        } catch (const std::invalid_argument& e) {
-                            cerr << "Invalid float: " << value << endl;
-                            positions[k] = 0.0f; // fallback
+                        positions[k] = stof(value);
+                    } catch (const std::invalid_argument& e) {
+                        cerr << "Invalid float: " << value << endl;
+                        positions[k] = 0.0f; // fallback
                     }
                 }
 
@@ -287,7 +294,7 @@ main(int argc, char* argv[])
     Ptr<PropagationDelayModel> delay = CreateObject<ConstantSpeedPropagationDelayModel>();
     Ptr<LoraChannel> channel = CreateObject<LoraChannel>(loss, delay);
 
-        // Create the LoraPhyHelper
+    // Create the LoraPhyHelper
     LoraPhyHelper phyHelper = LoraPhyHelper();
     phyHelper.SetChannel(channel);
 
@@ -301,7 +308,7 @@ main(int argc, char* argv[])
     macHelper.SetAddressGenerator(addrGen);
     phyHelper.SetDeviceType(LoraPhyHelper::ED);
     macHelper.SetDeviceType(LorawanMacHelper::ED_A);
-    helper.Install(phyHelper, macHelper, endDevices);
+    NetDeviceContainer endDevicesNetDevices = helper.Install(phyHelper, macHelper, endDevices);
 
     // Connect trace sources
     for (auto j = endDevices.Begin(); j != endDevices.End(); ++j)
@@ -309,6 +316,10 @@ main(int argc, char* argv[])
         Ptr<Node> node = *j;
         Ptr<LoraNetDevice> loraNetDevice = DynamicCast<LoraNetDevice>(node->GetDevice(0));
         Ptr<LoraPhy> phy = loraNetDevice->GetPhy();
+        Ptr<LorawanMac> mac = loraNetDevice->GetMac();
+        mac->SetAttribute("DataRate", UintegerValue(12-spreadingFactor)); // set spreading factor
+        phy->TraceConnectWithoutContext("StartSending", MakeCallback(&TxPacketSent));
+        
     }
 
     // Create a netdevice for each gateway
@@ -330,68 +341,45 @@ main(int argc, char* argv[])
             position.z = 1.2;
             mobility->SetPosition(position);
             rxPower = channel->GetRxPower(10, gw_mobility, mobility);
-            g_outFile << to_string(position.x) + "," + to_string(position.y) + "," + to_string(position.z) + "," + to_string(rxPower) << endl;
+            g_outFile << to_string(position.x) + "," + to_string(position.y) + "," + 
+                                                    to_string(position.z) + "," + to_string(rxPower) << endl;
         }
     }
-    /**********************
-     *  Handle buildings  *
-    **********************/
 
-    double xLength = 130;
-    double deltaX = 32;
-    double yLength = 64;
-    double deltaY = 17;
-    int gridWidth = 2 * radiusMeters / (xLength + deltaX);
-    int gridHeight = 2 * radiusMeters / (yLength + deltaY);
-    if (!realisticChannelModel)
-    {
-        gridWidth = 0;
-        gridHeight = 0;
-    }
-    Ptr<GridBuildingAllocator> gridBuildingAllocator;
-    gridBuildingAllocator = CreateObject<GridBuildingAllocator>();
-    gridBuildingAllocator->SetAttribute("GridWidth", UintegerValue(gridWidth));
-    gridBuildingAllocator->SetAttribute("LengthX", DoubleValue(xLength));
-    gridBuildingAllocator->SetAttribute("LengthY", DoubleValue(yLength));
-    gridBuildingAllocator->SetAttribute("DeltaX", DoubleValue(deltaX));
-    gridBuildingAllocator->SetAttribute("DeltaY", DoubleValue(deltaY));
-    gridBuildingAllocator->SetAttribute("Height", DoubleValue(6));
-    gridBuildingAllocator->SetBuildingAttribute("NRoomsX", UintegerValue(2));
-    gridBuildingAllocator->SetBuildingAttribute("NRoomsY", UintegerValue(4));
-    gridBuildingAllocator->SetBuildingAttribute("NFloors", UintegerValue(2));
-    gridBuildingAllocator->SetAttribute(
-        "MinX",
-        DoubleValue(-gridWidth * (xLength + deltaX) / 2 + deltaX / 2));
-    gridBuildingAllocator->SetAttribute(
-        "MinY",
-        DoubleValue(-gridHeight * (yLength + deltaY) / 2 + deltaY / 2));
-    BuildingContainer bContainer = gridBuildingAllocator->Create(gridWidth * gridHeight);
+    // /************************
+    //  * Install Energy Model *
+    //  ************************/
 
-    BuildingsHelper::Install(endDevices);
-    BuildingsHelper::Install(gateways);
+    // BasicEnergySourceHelper basicSourceHelper;
+    // LoraRadioEnergyModelHelper radioEnergyHelper;
 
-    // Print the buildings
-    if (printBuildingInfo)
-    {
-        std::ofstream myfile;
-        myfile.open("buildings.txt");
-        std::vector<Ptr<Building>>::const_iterator it;
-        int j = 1;
-        for (it = bContainer.Begin(); it != bContainer.End(); ++it, ++j)
-        {
-            Box boundaries = (*it)->GetBoundaries();
-            myfile << "set object " << j << " rect from " << boundaries.xMin << ","
-                   << boundaries.yMin << " to " << boundaries.xMax << "," << boundaries.yMax
-                   << std::endl;
-        }
-        myfile.close();
-    }
+    // // configure energy source
+    // basicSourceHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(10000)); // Energy in J
+    // basicSourceHelper.Set("BasicEnergySupplyVoltageV", DoubleValue(3.3));
+
+    // radioEnergyHelper.Set("StandbyCurrentA", DoubleValue(0.0014));
+    // radioEnergyHelper.Set("TxCurrentA", DoubleValue(0.028));
+    // radioEnergyHelper.Set("SleepCurrentA", DoubleValue(0.0000015));
+    // radioEnergyHelper.Set("RxCurrentA", DoubleValue(0.0112));
+
+    // radioEnergyHelper.SetTxCurrentModel("ns3::ConstantLoraTxCurrentModel",
+    //                                     "TxCurrent",
+    //                                     DoubleValue(0.028));
+
+    // // install source on end devices' nodes
+    // EnergySourceContainer sources = basicSourceHelper.Install(endDevices);
+    // Names::Add("/Names/EnergySource", sources.Get(0));
+
+    // // install device model
+    // DeviceEnergyModelContainer deviceModels =
+    //     radioEnergyHelper.Install(endDevicesNetDevices, sources);
+
 
     /**********************************************
      *  Set up the end device's spreading factor  *
      **********************************************/
 
-    LorawanMacHelper::SetSpreadingFactorsUp(endDevices, gateways, channel);
+    // LorawanMacHelper::SetSpreadingFactorsUp(endDevices, gateways, channel);
 
     NS_LOG_DEBUG("Completed configuration");
 
@@ -441,7 +429,7 @@ main(int argc, char* argv[])
         }
 
         Ptr<LoraPhy> gwPhy = gwDev->GetPhy();
-        // gwPhy->TraceConnectWithoutContext("ReceivedPacket", MakeCallback(&RxCallback));
+        gwPhy->TraceConnectWithoutContext("ReceivedPacket", MakeCallback(&RxCallback));
     }
 
     // Create a network server for the network
@@ -460,6 +448,14 @@ main(int argc, char* argv[])
 
     NS_LOG_INFO("Running simulation...");
     Simulator::Run();
+
+    packetReceived.open("packet_received-" + channelType + ".txt" , std::ios::app);
+    packetReceived << to_string(totalReceived) + ",";
+    packetReceived.close();
+
+    packetSent.open("packet_sent-" + channelType + ".txt", std::ios::app);
+    packetSent << to_string(totalSent) + ",";
+    packetSent.close();
 
     Simulator::Destroy();
     g_outFile.close();
