@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <ctime>
+#include<vector>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -54,7 +55,7 @@ int nGateways = 1;            //!< Number of gateway nodes to create
 double radiusMeters = 6400;         //!< Radius (m) of the deployment
 int spreadingFactor = 12;         //!< Radius (m) of the deployment
 double simulationTimeSeconds = 600; //!< Scenario duration (s) in simulated time
-string channelType = "log"; //!< type of stochastic channel
+string channelType = "rt"; //!< type of stochastic channel
 
 
 // Channel model
@@ -137,8 +138,44 @@ main(int argc, char* argv[])
     // LogComponentEnable("NetworkController", LOG_LEVEL_ALL);
 
     /***********
+     * Binaries *
+     ***********/
+
+    // Informations from the radio map
+    int num_tx = 100;
+    size_t dim1 = 677;
+    size_t dim2 = 854;
+
+    // Create a 3D vector: tx x rows x columns
+    std::vector<std::vector<std::vector<float>>> all_tx(num_tx,
+        std::vector<std::vector<float>>(dim1, std::vector<float>(dim2)));
+
+    // Saving the path gains / binaries for each gateway 
+    for (int tx = 0; tx < num_tx; ++tx) {
+        std::string filename = "scratch/transmitters/tx_" + std::to_string(tx) + ".bin";
+        std::ifstream file(filename, std::ios::binary);
+
+        if (!file.is_open()) {
+            std::cerr << "Erro ao abrir " << filename << std::endl;
+            continue;
+        }
+
+        std::vector<float> data(dim1*dim2);
+        file.read(reinterpret_cast<char*>(data.data()), dim1*dim2*sizeof(float));
+
+        // copia para o vetor 3D
+        for (size_t i = 0; i < dim1; ++i) {
+            for (size_t j = 0; j < dim2; ++j) {
+                all_tx[tx][i][j] = data[i*dim2 + j];
+            }
+        }
+    }
+
+    /***********
      *  Setup  *
      ***********/
+
+    // positions / path_gain
     g_outFile.open("lorawan-metrics.csv");
 
     // Create the time value from the period
@@ -180,13 +217,13 @@ main(int argc, char* argv[])
     // Assign a mobility model to each node
     mobility.Install(endDevices);
 
-    ifstream file("path_gain.csv");
+    ifstream file("scratch/end_devices_positions.csv");
     string line;
 
-    // Make it so that nodes are at a certain height > 0
+    // Make it so that nodes are at a certain height > 0 // Change file positions to match the gateway positions file
+    float positions[4] = {0, 0, 0, 0};
     for (auto j = endDevices.Begin(); j != endDevices.End(); ++j)
     {
-        float positions[4] = {0, 0, 0, 0};
         getline(file, line);
         stringstream ss(line);
         string value;
@@ -218,8 +255,56 @@ main(int argc, char* argv[])
 
     // Create the gateway nodes (allocate them uniformly on the disc)
     NodeContainer gateways;
+    int gatewayNumber = 80; // Gateway positions need to be different from the end-device positions
     gateways.Create(nGateways);
-    Vector gatewayPosition = Vector(-150.40869141, 274.10128784, 24.95183182);
+
+    std::ifstream file2("scratch/transmitters/coordinates.txt");
+    std::string line2;
+
+    // Vectors
+    std::vector<float> grid_positions_x;
+    std::vector<float> grid_positions_y;
+    std::vector<float> grid_positions_z;
+    std::vector<int> cell_index_x;
+    std::vector<int> cell_index_y;
+
+    while (std::getline(file2, line2)) {
+
+        if (line2.empty()) 
+            continue;  // pula linhas vazias
+
+        // trocar vírgulas por espaço
+        for (char &c : line2) {
+            if (c == ',') c = ' ';
+        }
+
+        float x, y, z;
+        int idx_x, idx_y;
+
+        std::stringstream ss(line2);
+
+        // agora precisam existir 5 valores
+        if (!(ss >> x >> y >> z >> idx_x >> idx_y)) {
+            std::cerr << "Erro lendo linha: " << line2 << std::endl;
+            continue;
+        }
+
+        // guardar tudo
+        grid_positions_x.push_back(x);
+        grid_positions_y.push_back(y);
+        grid_positions_z.push_back(z);
+        cell_index_x.push_back(idx_x);
+        cell_index_y.push_back(idx_y);
+    }
+
+    // exemplo de uso
+    Vector gatewayPosition = Vector(
+        grid_positions_x[gatewayNumber],
+        grid_positions_y[gatewayNumber],
+        grid_positions_z[gatewayNumber]
+    );
+
+    file2.close();
 
     Ptr<ListPositionAllocator> allocator = CreateObject<ListPositionAllocator>();
     // Make it so that nodes are at a certain height > 0
@@ -230,7 +315,9 @@ main(int argc, char* argv[])
     /***********************
     *  Create the channel  *
     ************************/
-    ifstream file2("path_gain.csv");
+    int ed_index = 0;
+    ifstream file3("scratch/end_devices_positions.csv");
+    std::string line3;
 
     Ptr<PropagationLossModel> loss;
     // Create the lora channel object
@@ -259,33 +346,46 @@ main(int argc, char* argv[])
         {
             Ptr<MobilityModel> gw_mobility = (*gw)->GetObject<MobilityModel>();
             Vector gw_position = gw_mobility->GetPosition();
-            cout << gw_position << endl;
-            for (auto k = endDevices.Begin(); k != endDevices.End(); ++k)
+            cout << "Gateway: " << gatewayNumber << "  gw_position:" << gw_position << endl;
+            std::cout << "--------------------------------" << std::endl;
+            for (auto k = endDevices.Begin(); k != endDevices.End(); ++k, ++ed_index)
             {
-                float positions[4] = {0, 0, 0, 0};
-                getline(file2, line);
-                stringstream ss(line);
-                string value;
-                for (int k = 0; k < 4; ++k) 
-                { 
-                    if (!getline(ss, value, ',')) {
-                            cerr << "Line " << line << " does not have 4 values!!" << endl;
-                            break;
-                    }
-                    try 
-                    {
-                        positions[k] = stof(value);
-                    } catch (const std::invalid_argument& e) {
-                        cerr << "Invalid float: " << value << endl;
-                        positions[k] = 0.0f; // fallback
-                    }
-                }
-
                 Ptr<MobilityModel> mobility = (*k)->GetObject<MobilityModel>();
                 Vector position = mobility->GetPosition();
                 position.z = 1.2;
-                mobility->SetPosition(position);
-                matrixLoss->SetLoss(gw_mobility, mobility, -positions[3]);
+
+                float px = position.x;
+                float py = position.y;
+
+                // Find the end-device position in all grid positions
+                int foundIndex = -1;
+                for (size_t i = 0; i < grid_positions_x.size(); i++)
+                {
+                    if (grid_positions_x[i] == px && grid_positions_y[i] == py)
+                    {
+                        foundIndex = i;
+                        break;
+                    }
+                }
+
+                if (foundIndex == -1)
+                {
+                    std::cerr << "ERRO: posição (" << px << ", " << py << ") não encontrada nos vetores!" << std::endl;
+                }
+                else
+                {
+                    std::cout << "End-device: " << ed_index << std::endl;
+                    std::cout << "Match encontrado na linha: " << foundIndex << std::endl;
+                    std::cout << "Cell index X = " << cell_index_x[foundIndex] 
+                            << " | Cell index Y = " << cell_index_y[foundIndex] << std::endl;
+                    std::cout << "position.x= " << position.x << "  position.y= " << position.y << std::endl;
+
+                    float path_gain = all_tx[gatewayNumber][cell_index_x[foundIndex]][cell_index_y[foundIndex]];
+                    std::cout << "path_gain= " << path_gain << std::endl;
+                    std::cout << "--------------------------------" << std::endl;
+                    mobility->SetPosition(position);
+                    matrixLoss->SetLoss(gw_mobility, mobility, -path_gain); // Is the path gain for the end-device positions ?
+                }
             }
         }
         loss = matrixLoss;
@@ -293,6 +393,8 @@ main(int argc, char* argv[])
 
     Ptr<PropagationDelayModel> delay = CreateObject<ConstantSpeedPropagationDelayModel>();
     Ptr<LoraChannel> channel = CreateObject<LoraChannel>(loss, delay);
+
+    file3.close();
 
     // Create the LoraPhyHelper
     LoraPhyHelper phyHelper = LoraPhyHelper();
@@ -332,8 +434,6 @@ main(int argc, char* argv[])
     {
         Ptr<MobilityModel> gw_mobility = (*gw)->GetObject<MobilityModel>();
         double rxPower = 0.0;
-        Vector gw_position = gw_mobility->GetPosition();
-        cout << gw_position << endl;
         for (auto k = endDevices.Begin(); k != endDevices.End(); ++k)
         {
             Ptr<MobilityModel> mobility = (*k)->GetObject<MobilityModel>();
@@ -460,13 +560,14 @@ main(int argc, char* argv[])
     Simulator::Destroy();
     g_outFile.close();
 
-    ///////////////////////////
-    // Print results to file //
-    ///////////////////////////
+    //////////////////////////////////
+    // Print results to file or not //
+    /////////////////////////////////
     NS_LOG_INFO("Computing performance metrics...");
 
     LoraPacketTracker& tracker = helper.GetPacketTracker();
     std::cout << tracker.CountMacPacketsGlobally(Time(0), appStopTime + Hours(1)) << std::endl;
-
+    float pdr = float(totalSent)/float(totalReceived);
+    std::cout << pdr << std::endl;
     return 0;
 }
