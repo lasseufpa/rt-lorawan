@@ -1,147 +1,131 @@
-'''
+"""
 Script to generate ray tracing datasets
-'''
+"""
+
 import os
-import argparse
+import pathlib
 import numpy as np
-import tensorflow as tf
+import sionna
+
+from sionna.rt import load_scene, Transmitter, PlanarArray, RadioMapSolver, Camera
 from matplotlib import pyplot as plt
 
-# Import Sionna RT ccmomponents
-import sionna
-from sionna.rt import load_scene, Transmitter, Receiver, PlanarArray, Camera
+rm_solver = RadioMapSolver()
 
-parser = argparse.ArgumentParser()
+z = 30  # fixed height for each device
 
-parser.add_argument(
-"--scenario", "-s", help="Type of scenario [canyon | etoile | munich | modern]", 
-                type=str, required=True
-)   
+# Create the output directory
+OUTPUT_PATH_NAME = "../path_gains/sionna/bin"
+if not os.path.isdir(OUTPUT_PATH_NAME):
+    pathlib.Path(OUTPUT_PATH_NAME).mkdir(parents=True, exist_ok=True)
 
-args = parser.parse_args()
-
-if args.scenario == 'canyon':
-    scene = load_scene('rtr/sionna/rt/scenes/simple_street_canyon/simple_street_canyon.xml')
-    cam_look_at=[0, 0, 0]
-    cam_position=[0, 0, 150]
-    tx_position = [-31, 10, 29]
-    rx_position = [23.0, 1.1, 1.4]
-    rx_interf_position = [-23.0, 4.1, 1.4]
-elif args.scenario == 'etoile':
-    scene = load_scene('rtr/sionna/rt/scenes/etoile/etoile.xml')
-    cam_position = [94.1, 63.1, 300]
-    cam_look_at = [94.1, 63.1, 0]
-    tx_position = [58.1, 74.3, 2.4]
-    rx_position = [130.1, 51.9, 1.4]
-    rx_interf_position = [45, 51.9, 1.4]
-elif args.scenario == 'munich':
-    scene = load_scene(sionna.rt.scene.munich) # Try also sionna.rt.scene.etoile
-    cam_position = [-250,250,150]
-    cam_look_at = [-15,30,28]
-    tx_position=[8.5, 21, 27]
-    rx_position=[45, 25, 1.5]
-elif args.scenario == 'modern':
-    scene = load_scene('rtr/sionna/rt/scenes/modern_city/modern_city.xml')
-    cam_position = [30, 20, 50]
-    cam_look_at = [-10,20,28]
-    tx_position=[8.38372,-35.8423, 14]
-    rx_position=[-10.8001, 9.67042, 1.5]
-
-scene.frequency = 1e9 # MHz
-scene.synthetic_array = True
-
-if not os.path.isdir('scenes_images'):
-    os.mkdir('scenes_images')
-
-# Transmitter (=basestation) has an antenna pattern from 3GPP 38.901
-scene.tx_array = PlanarArray(num_rows=1,
-                             num_cols=1,
-                             vertical_spacing=0.5,
-                             horizontal_spacing=0.5,
-                             pattern="tr38901",
-                             polarization="cross")
-# Add transmitter instance to scene
-
-scene.rx_array = PlanarArray(num_rows=1,
-                             num_cols=1,
-                             vertical_spacing=0.5,
-                             horizontal_spacing=0.5,
-                             pattern="tr38901",
-                             polarization="cross")
-
-# Create transmitter
-tx = Transmitter(name="tx",
-                color=(0, 0, 1),
-                position=[8.5,21,27])
-
-scene.add(tx)
-
-max_depth = 3 # Defines max number of ray interactions
-
-# Update coverage_map
-print("running")
-cm = scene.coverage_map(max_depth=max_depth,
-                        diffraction=True,
-                        cm_cell_size=(1., 1.),
-                        combining_vec=None,
-                        precoding_vec=None,
-                        num_samples=int(10e6))
+OUTPUT_PATH_NAME = "../path_gains/sionna/npy"
+if not os.path.isdir(OUTPUT_PATH_NAME):
+    pathlib.Path(OUTPUT_PATH_NAME).mkdir(parents=True, exist_ok=True)
 
 
-min_gain_db = -130 # in dB; ignore any position with less than -130 dB path gain
-max_gain_db = 0 # in dB; ignore strong paths
+def config_scene(num_rows, num_cols):
+    """Load and configure a scene"""
+    scene = load_scene(sionna.rt.scene.etoile)
+    scene.bandwidth = 100e6
 
-# sample points in a 5-400m radius around the receiver
-min_dist = 5 # in m
-max_dist = 200 # in m
-n_receivers = 20
+    # Configure antenna arrays for all transmitters and receivers
+    scene.tx_array = PlanarArray(
+        num_rows=num_rows,
+        num_cols=num_cols,
+        pattern="iso",
+        polarization="V"
+    )
 
-#sample batch_size random user positions from coverage map
-ue_pos, cell_index = cm.sample_positions(n_receivers,
-                                metric="path_gain",
-                                min_val_db=min_gain_db,
-                                max_val_db=max_gain_db,
-                                min_dist=min_dist,
-                                max_dist=max_dist)
-ue_pos = tf.squeeze(ue_pos)
-cell_index = tf.squeeze(cell_index)
+    scene.rx_array = PlanarArray(
+        num_rows=1,
+        num_cols=1,
+        pattern="iso",
+        polarization="V"
+    )
 
-# Create batch_size receivers
-for i in range(n_receivers):
-    rx = Receiver(name=f"rx-{i}",
-                  color=(1, 0, 0),
-                  position=ue_pos[i], # Random position sampled from coverage map
-                  )
-    scene.add(rx)
+    num_tx = 100
+    spacing = 50  # meters between transmitters (adjust)
+    grid_size = int(np.ceil(np.sqrt(num_tx)))
 
-global_coordinates = cm.cell_centers.numpy() # Coordinates in blender
-power_levels = 10*np.log10(cm.path_gain) # path gain in dB
+    positions = []
+    look_ats = []
 
-cmap_data_list = []
-counter = 0
-for index in cell_index:
-    power_level = power_levels[0, index[1], index[0]]
-    cmap_data_list.append([ue_pos[counter][0], ue_pos[counter][1], ue_pos[counter][2], power_level])
-    counter += 1
+    for i in range(num_tx):
+        row = i // grid_size
+        col = i % grid_size
 
-cmap_data_list = np.array(cmap_data_list)
+        x = -200 + col * spacing
+        y = -200 + row * spacing
 
-print(cmap_data_list)
-resolution = [480, 320] # increase for higher quality of renderings
+        positions.append([x, y, z])
+        look_ats.append([0, 0, 0]) # all look toward center
 
-# Create new camera
-tx_pos = scene.transmitters["tx"].position.numpy()
-bird_pos = tx_pos.copy()
-bird_pos[-1] = 1000 # Set height of coverage map to 1000m above tx
-bird_pos[-2]-= 0.01 # Slightly move the camera for correct orientation
+    positions = np.array(positions)
+    look_ats = np.array(look_ats)
 
-# Create new camera
-bird_cam = Camera("birds_view", position=bird_pos, look_at=tx_pos)
+    # Fixed power for all TX
+    power_dbms = [14] * num_tx
 
-scene.add(bird_cam)
+    # Add all transmitters to scene
+    for i in range(num_tx):
+        scene.add(
+            Transmitter(
+                name=f"tx{i}",
+                position=positions[i],
+                look_at=look_ats[i],
+                power_dbm=power_dbms[i]
+            )
+        )
 
-scene.render(camera="birds_view", coverage_map=cm, num_samples=512, resolution=resolution, show_devices=True)
+    return scene
 
-np.set_printoptions(suppress=True, precision=8)  # precision optional
-np.savetxt("path_gain.csv", cmap_data_list, delimiter=",", fmt="%.8f")
-plt.savefig("coverage_map.pdf")
+# Load and configure scene
+num_rows=8
+num_cols=2
+scene = config_scene(num_rows, num_cols)
+
+# Compute the path gain map
+rm = rm_solver(scene,
+               max_depth=5,
+               samples_per_tx=10**7,
+               cell_size=(1, 1))
+
+cam = Camera(position=[0,0,1000],
+                    orientation=np.array([0,np.pi/2,-np.pi/2]))
+scene.render(camera=cam,
+                    radio_map=rm,
+                    rm_metric="path_gain",
+                    rm_vmin=-160,
+                    rm_vmax=-70,
+                    rm_show_color_bar=True,
+                    rm_tx=1)
+
+plt.savefig("3D_preview.pdf")
+plt.close()
+
+plt.close()
+rm.show(metric="path_gain")
+plt.savefig("2D_preview.pdf")
+plt.close()
+
+print(rm.path_gain.shape)
+# Save the radio map (dB) into a npy
+path_gain_db = 10*np.log10(rm.path_gain)
+for i in range(path_gain_db.shape[0]):
+    filename_bin = f"../path_gains/sionna/bin/tx_{i}.bin"
+    filename_npy = f"../path_gains/sionna/npy/tx_{i}.npy"
+    path_gain_db[i].tofile(filename_bin)
+    np.save(filename_npy, path_gain_db[i])
+
+coordinates = []
+for y in range(rm.tx_cell_indices.shape[1]):
+    base = rm.cell_centers[rm.tx_cell_indices[0][y]][rm.tx_cell_indices[1][y]]
+    extra1 = rm.tx_cell_indices[0][y]
+    extra2 = rm.tx_cell_indices[1][y]
+    coordinates.append([*base, extra1, extra2])
+    
+# Saving the path gain in .txt files
+with open("../path_gains/coordinates.csv", "w") as f:
+    for c in coordinates:
+        f.write(f"{c[1]},{c[0]},{z},{c[4]},{c[3]}\n") # Saving in the format (x, y) -> indexes
