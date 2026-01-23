@@ -1,4 +1,5 @@
 import os
+import pathlib
 import pandas as pd
 import numpy as np
 import re
@@ -20,7 +21,7 @@ args = parser.parse_args()
 
 ROOT_DIR = "results" # path to root database directory
 # Create the output directory
-OUTPUT_PATH_NAME = "figures"
+OUTPUT_PATH_NAME = f"{ROOT_DIR}/figures"
 if not os.path.isdir(OUTPUT_PATH_NAME):
     pathlib.Path(OUTPUT_PATH_NAME).mkdir(parents=True, exist_ok=True)
 
@@ -110,7 +111,8 @@ G_index = list(range(G))       # 0..G-1
 Nd = len(end_devices_cells)
 D_index = list(range(Nd))      # 0..Nd-1
 
-P_min = -180  # threshold in dBm
+P_min = min([x for x in rx_power.values() if x != -1000]) + 20 # threshold in dBm
+print("Minimum threshold power: ", P_min)
 
 # Defining an cover dict
 cover = {}
@@ -191,15 +193,17 @@ sc = plt.scatter(dev_x, dev_y, c=received_power, alpha=0.8, label="End-devices")
 # gateways escolhidos (destaque)
 plt.scatter(xs_chosen, ys_chosen, marker='s', color="orange", edgecolors='k', s=80, label='Chosen gateway position')
 
+# saving receiver power for each end-device
+np.savez(f"results/receiver_power_{path_gain_type}.npz", received_power)
 
 plt.xlabel("x (m)")
 plt.ylabel("y (m)")
-plt.title(f"Gateway positioning optimal solution ({path_gain_type})")
+plt.title(f"Gateway positioning optimal solution ({path_gain_type.title()})")
 plt.colorbar(sc, label="Received power (dBm)")
 plt.gca().set_aspect('equal', 'box')
 plt.grid(True)
 handles, labels = plt.gca().get_legend_handles_labels()
 by_label = dict(zip(labels, handles))
 plt.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, -0.1), ncol=3)
-plt.savefig(f"result/figures/gateway_positioning_{path_gain_type}.pdf", bbox_inches="tight")
+plt.savefig(f"results/figures/gateway_positioning_{path_gain_type}.pdf", bbox_inches="tight")
 plt.show()

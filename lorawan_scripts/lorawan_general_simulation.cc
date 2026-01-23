@@ -1,23 +1,12 @@
-/*
- * Copyright (c) 2017 University of Padova
- *
- * SPDX-License-Identifier: GPL-2.0-only
- *
- * Author: Davide Magrin <magrinda@dei.unipd.it>
- */
-
-/*
- * This script simulates a complex scenario with multiple gateways and end
- * devices. The metric of interest for this script is the throughput of the
- * network.
- */
-
 #include "ns3/basic-energy-source-helper.h"
 #include "ns3/lora-radio-energy-model-helper.h"
 #include "ns3/class-a-end-device-lorawan-mac.h"
 #include "ns3/command-line.h"
 #include "ns3/file-helper.h"
 #include "ns3/constant-position-mobility-model.h"
+#include "ns3/propagation-module.h"
+#include "ns3/three-gpp-propagation-loss-model.h"
+#include "ns3/channel-condition-model.h"
 #include "ns3/correlated-shadowing-propagation-loss-model.h"
 #include "ns3/double.h"
 #include "ns3/end-device-lora-phy.h"
@@ -36,6 +25,7 @@
 #include "ns3/simulator.h"
 
 #include <algorithm>
+#include <experimental/filesystem>
 #include <ctime>
 #include<vector>
 #include <iostream>
@@ -47,14 +37,16 @@ using namespace ns3;
 using namespace lorawan;
 using namespace std;
 
+namespace fs = std::experimental::filesystem;
+
 NS_LOG_COMPONENT_DEFINE("ComplexLorawanNetworkExample");
 
 // Network settings
-int nDevices = 20;           //!< Number of end device nodes to create
+int nDevices = 100;           //!< Number of end device nodes to create
 int nGateways = 1;            //!< Number of gateway nodes to create
 int gatewaysNumberPositions = 99;  //!< Number of possibles gateway positions
 double radiusMeters = 6400;         //!< Radius (m) of the deployment
-int spreadingFactor = 12;         //!< Radius (m) of the deployment
+int spreadingFactor = 7;         //!< Radius (m) of the deployment
 double simulationTimeSeconds = 600; //!< Scenario duration (s) in simulated time
 string channelType = "nakagami"; //!< type of stochastic channel
 
@@ -66,7 +58,7 @@ bool realisticChannelModel = false; //!< Whether to use a more realistic channel
 int appPeriodSeconds = 60; //!< Duration (s) of the inter-transmission time of end devices
 
 
-static ofstream g_outFile;
+static ofstream rxPowerResult;
 static ofstream packetReceived;
 static ofstream packetSent;
 bool stochasticChannel = true;
@@ -119,16 +111,17 @@ main(int argc, char* argv[])
     /***********
      *  Setup  *
      ***********/
-    for (int i=0; i<=gatewaysNumberPositions; i++)
+    for (int i = 0; i <= gatewaysNumberPositions; i++)
     {
         int gatewayNumber = i; // Gateway positions; need to be different from the end-device positions
         std::cout << "---------------------------------------------"<< std::endl;
         std::cout << "Gateway number: " << i << std::endl;
         // positions / path_gain
-        g_outFile.open("scratch/pgs_ns3/pgs_gateway_" + std::to_string(gatewayNumber) + ".csv");
+        string path_gain_results = "../path_gains/ns3/" + channelType + '/' + std::to_string(gatewayNumber) + ".csv";
+        rxPowerResult.open(path_gain_results);
 
         // Create the time value from the period
-        Time appPeriod = Seconds(appPeriodSeconds);
+        Time appPeriod = Seconds(appPeriodSeconds); 
         cout << "simulation " << simulationTimeSeconds << endl;
         // Mobility
         MobilityHelper mobility;
@@ -166,10 +159,11 @@ main(int argc, char* argv[])
         // Assign a mobility model to each node
         mobility.Install(endDevices);
 
-        ifstream file("scratch/end_devices_positions.csv");
+        ifstream file("../path_gains/coordinates.csv");
         string line;
 
-        // Make it so that nodes are at a certain height > 0 // Change file positions to match the gateway positions file
+        // Make it so that nodes are at a certain height > 0 
+        // Change file positions to match the gateway positions file
         float positions[4] = {0, 0, 0, 0};
         for (auto j = endDevices.Begin(); j != endDevices.End(); ++j)
         {
@@ -178,7 +172,7 @@ main(int argc, char* argv[])
             string value;
             for (int k = 0; k < 4; ++k) {
                     if (!getline(ss, value, ',')) {
-                        cerr << "Line " << line << " does not have 4 values!" << endl;
+                        cerr << "Line " << line << "does not have 4 values!" << endl;
                         break;
                     }
                     try {
@@ -198,6 +192,7 @@ main(int argc, char* argv[])
         }
 
         file.close();
+
         /*********************
          *  Create Gateways  *
          *********************/
@@ -206,7 +201,7 @@ main(int argc, char* argv[])
         NodeContainer gateways;
         gateways.Create(nGateways);
 
-        std::ifstream file2("scratch/pgs_sionna/coordinates.txt");
+        std::ifstream file2("../path_gains/coordinates.csv");
         std::string line2;
 
         // Vectors
@@ -231,13 +226,11 @@ main(int argc, char* argv[])
 
             std::stringstream ss(line2);
 
-            // agora precisam existir 5 valores
             if (!(ss >> x >> y >> z >> idx_x >> idx_y)) {
-                std::cerr << "Erro lendo linha: " << line2 << std::endl;
+                std::cerr << "Error at line: " << line2 << std::endl;
                 continue;
             }
 
-            // guardar tudo
             grid_positions_x.push_back(x);
             grid_positions_y.push_back(y);
             grid_positions_z.push_back(z);
@@ -245,7 +238,6 @@ main(int argc, char* argv[])
             cell_index_y.push_back(idx_y);
         }
 
-        // exemplo de uso
         Vector gatewayPosition = Vector(
             grid_positions_x[gatewayNumber],
             grid_positions_y[gatewayNumber],
@@ -264,7 +256,7 @@ main(int argc, char* argv[])
         *  Create the channel  *
         ************************/
         int ed_index = 0;
-        ifstream file3("scratch/end_devices_positions.csv");
+        ifstream file3("../path_gains/coordinates.csv");
         std::string line3;
 
         Ptr<PropagationLossModel> loss;
@@ -288,6 +280,15 @@ main(int argc, char* argv[])
             tworay->SetAttribute ("SystemLoss", DoubleValue (1.0));
             tworay->SetAttribute ("HeightAboveZ", DoubleValue (1.5)); // antenna height
             loss = tworay;
+        } else if (channelType == "okumura") {
+            Ptr<OkumuraHataPropagationLossModel> okumura = CreateObject<OkumuraHataPropagationLossModel> ();
+            loss = okumura;
+        } else if (channelType == "threegpp") {
+            Ptr<ThreeGppUmaPropagationLossModel> threeGpp = CreateObject<ThreeGppUmaPropagationLossModel>();
+            loss = threeGpp;
+        } else if (channelType == "cost") {
+            Ptr<Cost231PropagationLossModel> cost231 = CreateObject<Cost231PropagationLossModel>();
+            loss = cost231;
         } else if (channelType == "rt") {
             // Informations from the radio map
             int num_tx = 100;
@@ -300,18 +301,17 @@ main(int argc, char* argv[])
 
             // Saving the path gains / binaries for each gateway 
             for (int tx = 0; tx < num_tx; ++tx) {
-                std::string filename = "scratch/pgs_sionna/tx_" + std::to_string(tx) + ".bin";
+                std::string filename = "../path_gains/sionna/bin/tx_" + std::to_string(tx) + ".bin";
                 std::ifstream file(filename, std::ios::binary);
 
                 if (!file.is_open()) {
-                    std::cerr << "Erro ao abrir " << filename << std::endl;
+                    std::cerr << "File not found " << filename << std::endl;
                     continue;
                 }
 
                 std::vector<float> data(dim1*dim2);
                 file.read(reinterpret_cast<char*>(data.data()), dim1*dim2*sizeof(float));
 
-                // copia para o vetor 3D
                 for (size_t i = 0; i < dim1; ++i) {
                     for (size_t j = 0; j < dim2; ++j) {
                         all_tx[tx][i][j] = data[i*dim2 + j];
@@ -348,12 +348,12 @@ main(int argc, char* argv[])
 
                     if (foundIndex == -1)
                     {
-                        std::cerr << "ERRO: posição (" << px << ", " << py << ") não encontrada nos vetores!" << std::endl;
+                        std::cerr << "ERROR: position (" << px << ", " << py << ") not found!" << std::endl;
                     }
                     else
                     {
                         std::cout << "End-device: " << ed_index << std::endl;
-                        std::cout << "Match encontrado na linha: " << foundIndex << std::endl;
+                        std::cout << "Match found at line: " << foundIndex << std::endl;
                         std::cout << "Cell index X = " << cell_index_x[foundIndex] 
                                 << " | Cell index Y = " << cell_index_y[foundIndex] << std::endl;
                         std::cout << "position.x= " << position.x << "  position.y= " << position.y << std::endl;
@@ -372,11 +372,10 @@ main(int argc, char* argv[])
         Ptr<PropagationDelayModel> delay = CreateObject<ConstantSpeedPropagationDelayModel>();
         Ptr<LoraChannel> channel = CreateObject<LoraChannel>(loss, delay);
 
-        file3.close();
-
         // Create the LoraPhyHelper
         LoraPhyHelper phyHelper = LoraPhyHelper();
         phyHelper.SetChannel(channel);
+        // phyHelper.Set("TxPower", DoubleValue(14));
 
         // Create the LoraNetDevices of the end devices
         uint8_t nwkId = 54;
@@ -419,7 +418,7 @@ main(int argc, char* argv[])
                 position.z = 30;
                 mobility->SetPosition(position);
                 rxPower = channel->GetRxPower(10, gw_mobility, mobility);
-                g_outFile << to_string(position.x) + "," + to_string(position.y) + "," + 
+                rxPowerResult << to_string(position.x) + "," + to_string(position.y) + "," + 
                                                         to_string(position.z) + "," + to_string(rxPower) << endl;
             }
         }
@@ -492,16 +491,16 @@ main(int argc, char* argv[])
         NS_LOG_INFO("Running simulation...");
         Simulator::Run();
 
-        packetReceived.open("packet_received-" + channelType + ".txt" , std::ios::app);
+        packetReceived.open("../path_gains/" + channelType + "/packet_received-" + channelType + ".txt" , std::ios::app);
         packetReceived << to_string(totalReceived) + ",";
         packetReceived.close();
 
-        packetSent.open("packet_sent-" + channelType + ".txt", std::ios::app);
+        packetSent.open("../path_gains/ns3/" + channelType + "/packet_sent-" + channelType + ".txt", std::ios::app);
         packetSent << to_string(totalSent) + ",";
         packetSent.close();
-
+        file3.close();
+        rxPowerResult.close();
         Simulator::Destroy();
-        g_outFile.close();
 
         //////////////////////////////////
         // Print results to file or not //
@@ -510,8 +509,9 @@ main(int argc, char* argv[])
 
         LoraPacketTracker& tracker = helper.GetPacketTracker();
         std::cout << tracker.CountMacPacketsGlobally(Time(0), appStopTime + Hours(1)) << std::endl;
-        float pdr = float(totalSent)/float(totalReceived);
+        float pdr = float(totalReceived)/float(totalSent);
         std::cout << "PDR: " << pdr << std::endl;
     }
+
     return 0;
 }
