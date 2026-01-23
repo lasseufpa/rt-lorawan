@@ -1,4 +1,5 @@
 import os
+import glob
 import pathlib
 import pandas as pd
 import numpy as np
@@ -16,6 +17,12 @@ parser.add_argument(
     "--channel-type", "-c", help="Type of channel", 
     type=str, required=True
 )
+
+parser.add_argument(
+    "--threshold", "-t", help="Threshold in dBm", 
+    type=float, required=False
+)
+
 
 args = parser.parse_args()
 
@@ -57,15 +64,16 @@ def _plot_relationship(cover):
 def _get_path_gain(path_gain_type: str):
     path_gain_db = []
     if path_gain_type == "sionna":
-        files = sorted(os.listdir(f"path_gains/{path_gain_type}/npy"), key=extract_number)
+        files = sorted(glob.glob(f"path_gains/{path_gain_type}/npy/*.npy"))
         for fname in files:
-            filename = f"path_gains/{path_gain_type}/npy/{fname}"
+            filename = f"{fname}"
             data = np.load(filename)
             path_gain_db.append(data)
     else:
-        files = sorted(os.listdir(f"path_gains/ns3/{path_gain_type}/"), key=extract_number)
+        files = sorted(glob.glob(f"path_gains/ns3/{path_gain_type}/*.csv"))
         for fname in files:
-            df = pd.read_csv(f"path_gains/ns3/{path_gain_type}/{fname}", header=None)
+            df = pd.read_csv(f"{fname}", header=None)
+            
             path_gain_db.append(df)
 
     return np.array(path_gain_db)
@@ -111,7 +119,11 @@ G_index = list(range(G))       # 0..G-1
 Nd = len(end_devices_cells)
 D_index = list(range(Nd))      # 0..Nd-1
 
-P_min = min([x for x in rx_power.values() if x != -1000]) + 20 # threshold in dBm
+
+if args.threshold is None:
+    P_min = min([x for x in rx_power.values() if x != -1000]) + 20 # threshold in dBm
+else:
+    P_min = args.threshold
 print("Minimum threshold power: ", P_min)
 
 # Defining an cover dict
@@ -196,6 +208,9 @@ plt.scatter(xs_chosen, ys_chosen, marker='s', color="orange", edgecolors='k', s=
 # saving receiver power for each end-device
 np.savez(f"results/receiver_power_{path_gain_type}.npz", received_power)
 
+if path_gain_type == "log":
+    path_gain_type = "Log-distance"
+
 plt.xlabel("x (m)")
 plt.ylabel("y (m)")
 plt.title(f"Gateway positioning optimal solution ({path_gain_type.title()})")
@@ -205,5 +220,4 @@ plt.grid(True)
 handles, labels = plt.gca().get_legend_handles_labels()
 by_label = dict(zip(labels, handles))
 plt.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1.1, -0.1), ncol=3)
-plt.savefig(f"results/figures/gateway_positioning_{path_gain_type}.pdf", bbox_inches="tight")
-plt.show()
+plt.savefig(f"plot_data/figures/gateway_positioning_{path_gain_type}.pdf", bbox_inches="tight")
