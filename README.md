@@ -7,6 +7,7 @@ In order to generate new path gains data, considering a grid with 100 positions 
 python3 path_loss_generator.py
 ```
 
+## 
 In order to perform a gateway placement optimization, with a fixed threshold you can use the following command:
 
 ```python
