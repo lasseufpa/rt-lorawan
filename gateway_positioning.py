@@ -23,8 +23,8 @@ parser.add_argument(
     type=float, required=False
 )
 
-
 args = parser.parse_args()
+
 
 ROOT_DIR = "results" # path to root database directory
 # Create the output directory
@@ -119,12 +119,15 @@ G_index = list(range(G))       # 0..G-1
 Nd = len(end_devices_cells)
 D_index = list(range(Nd))      # 0..Nd-1
 
-
 if args.threshold is None:
-    P_min = min([x for x in rx_power.values() if x != -1000]) + 20 # threshold in dBm
+    rho = min([x for x in rx_power.values() if x != -1000]) + 20 # threshold in dBm
 else:
-    P_min = args.threshold
-print("Minimum threshold power: ", P_min)
+    rho = args.threshold
+print("List of power thresholds: ", rho)
+
+all_received_power = []
+all_dev_x, all_dev_y = [], []
+all_xs_chosen, all_ys_chosen = [], []
 
 # Defining an cover dict
 cover = {}
@@ -132,7 +135,7 @@ for d in D_index:
     for p_gateway in G_index:
         # This indicates whether the power threshold is being reached in each
         # end-device for each gateway -> simplification to 0 or 1
-        cover[(d, p_gateway)] = 1 if rx_power[(d, p_gateway)] >= P_min else 0
+        cover[(d, p_gateway)] = 1 if rx_power[(d, p_gateway)] >= rho else 0
 
 #_plot_relationship(cover)
 
@@ -186,7 +189,6 @@ for d in D_index:
     else:
         received_power[d] = NO_SIGNAL # very negative value
 
-
 # End-device positions
 dev_x = devices_df[0].values
 dev_y = devices_df[1].values
@@ -198,21 +200,29 @@ ys_gate = [coordinates[p][1] for p in G_index]
 # chosen gateways positions
 xs_chosen = [coordinates[p][0] for p in chosen_gateways]
 ys_chosen = [coordinates[p][1] for p in chosen_gateways]
+    
+# saving receiver power for each end-device
+np.savez(f"results/receiver_power_{path_gain_type}.npz", received_power)
+# saving all position coordinates
+np.savez(f"results/all_position.npz", dev_x, dev_y)
+# saving gateway positioning coordinates
+np.savez(f"results/chosen_position_{path_gain_type}.npz", xs_chosen, ys_chosen)
 
 # end-devices color by received power
 sc = plt.scatter(dev_x, dev_y, c=received_power, alpha=0.8, label="End-devices")
 
 # gateways escolhidos (destaque)
-plt.scatter(xs_chosen, ys_chosen, marker='s', color="orange", edgecolors='k', s=80, label='Chosen gateway position')
-
-# saving receiver power for each end-device
-np.savez(f"results/receiver_power_{path_gain_type}.npz", received_power)
+plt.scatter(xs_chosen, ys_chosen, marker='s', color="black", edgecolors='k', s=80, label='Chosen gateway position')
 
 if path_gain_type == "log":
     path_gain_type = "Log-distance"
+elif path_gain_type == "threegpp":
+    path_gain_type = "3GPP"
+elif path_gain_type == "cost":
+    path_gain_type = "COST-231"
 
-plt.xlabel("x (m)")
-plt.ylabel("y (m)")
+plt.xlabel("x (m)", fontsize=14)
+plt.ylabel("y (m)", fontsize=14)
 plt.title(f"Gateway positioning optimal solution ({path_gain_type.title()})")
 plt.colorbar(sc, label="Received power (dBm)")
 plt.gca().set_aspect('equal', 'box')
