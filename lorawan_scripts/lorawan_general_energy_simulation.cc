@@ -25,19 +25,18 @@
 #include "ns3/simulator.h"
 
 #include <algorithm>
-#include <experimental/filesystem>
 #include <ctime>
 #include<vector>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 using namespace ns3;
 using namespace lorawan;
 using namespace std;
-
-namespace fs = std::experimental::filesystem;
 
 NS_LOG_COMPONENT_DEFINE("ComplexLorawanNetworkExample");
 
@@ -61,6 +60,7 @@ int appPeriodSeconds = 60; //!< Duration (s) of the inter-transmission time of e
 double totalNetworkEnergy = 0;
 
 static ofstream rxPowerResult;
+static ofstream edEnergy;
 static ofstream packetReceived;
 static ofstream packetSent;
 bool stochasticChannel = true;
@@ -119,8 +119,18 @@ main(int argc, char* argv[])
      *  Setup  *
      ***********/
 
+    string energy_results_dir = "../energy_results/sf_" + to_string(spreadingFactor);
+    if (!fs::exists(energy_results_dir)) {
+        fs::create_directories(energy_results_dir);
+    }
+
+    string path_gain_results_dir = "../path_gain_results/ns3/" + channelType;
+    if (!fs::exists(path_gain_results_dir)) {
+        fs::create_directories(path_gain_results_dir);
+    }
+
     // Cleaning the outputs csv
-    std::ofstream clearFile("../energy/energy.csv", std::ios::trunc);
+    std::ofstream clearFile("../energy_results/sf_" + to_string(spreadingFactor) + "/energies.csv", std::ios::trunc);
     clearFile.close();
 
     for (int i = 0; i <= gatewaysNumberPositions; i++)
@@ -129,8 +139,12 @@ main(int argc, char* argv[])
         std::cout << "---------------------------------------------"<< std::endl;
         std::cout << "Gateway number: " << i << std::endl;
         // positions / path_gain
-        string path_gain_results = "../path_gains/ns3/" + channelType + '/' + std::to_string(gatewayNumber) + ".csv";
+        string path_gain_results = "../path_gain_results/ns3/" + channelType + '/' 
+                                                        + std::to_string(gatewayNumber) + ".csv";
+        string energy_per_device = "../energy_results/sf_" + to_string(spreadingFactor) + '/'
+                                                        + std::to_string(gatewayNumber) + ".csv";
         rxPowerResult.open(path_gain_results);
+        edEnergy.open(energy_per_device);
 
         // Create the time value from the period
         Time appPeriod = Seconds(appPeriodSeconds); 
@@ -171,7 +185,7 @@ main(int argc, char* argv[])
         // Assign a mobility model to each node
         mobility.Install(endDevices);
 
-        ifstream file("../path_gains/coordinates.csv");
+        ifstream file("../path_gain_results/coordinates.csv");
         string line;
 
         // Make it so that nodes are at a certain height > 0 
@@ -213,7 +227,7 @@ main(int argc, char* argv[])
         NodeContainer gateways;
         gateways.Create(nGateways);
 
-        std::ifstream file2("../path_gains/coordinates.csv");
+        std::ifstream file2("../path_gain_results/coordinates.csv");
         std::string line2;
 
         // Vectors
@@ -268,7 +282,7 @@ main(int argc, char* argv[])
         *  Create the channel  *
         ************************/
         int ed_index = 0;
-        ifstream file3("../path_gains/coordinates.csv");
+        ifstream file3("../path_gain_results/coordinates.csv");
         std::string line3;
 
         Ptr<PropagationLossModel> loss;
@@ -313,7 +327,7 @@ main(int argc, char* argv[])
 
             // Saving the path gains / binaries for each gateway 
             for (int tx = 0; tx < num_tx; ++tx) {
-                std::string filename = "../path_gains/sionna/bin/tx_" + std::to_string(tx) + ".bin";
+                std::string filename = "../path_gain_results/sionna/bin/tx_" + std::to_string(tx) + ".bin";
                 std::ifstream file(filename, std::ios::binary);
 
                 if (!file.is_open()) {
@@ -533,11 +547,11 @@ main(int argc, char* argv[])
         NS_LOG_INFO("Running simulation...");
         Simulator::Run();
 
-        packetReceived.open("../path_gains/" + channelType + "/packet_received-" + channelType + ".txt" , std::ios::app);
+        packetReceived.open("../path_gain_results/" + channelType + "/packet_received-" + channelType + ".txt" , std::ios::app);
         packetReceived << to_string(totalReceived) + ",";
         packetReceived.close();
 
-        packetSent.open("../path_gains/ns3/" + channelType + "/packet_sent-" + channelType + ".txt", std::ios::app);
+        packetSent.open("../path_gain_results/ns3/" + channelType + "/packet_sent-" + channelType + ".txt", std::ios::app);
         packetSent << to_string(totalSent) + ",";
         packetSent.close();
         file3.close();
@@ -549,9 +563,12 @@ main(int argc, char* argv[])
             double remaining = energySources.Get(i)->GetRemainingEnergy();
             double totalConsumedByEDi = 0;
             totalConsumedByEDi += (initialEnergy - remaining);
-            std::cout << "ED: " << i << ", " << "Energy used: " << totalConsumedByEDi << " J" << std::endl;
+            cout << "ED: " << i << ", " << "Energy used: " << totalConsumedByEDi << " J" << std::endl;
+            edEnergy << totalConsumedByEDi << std::endl;
             totalConsumedByEDs += (initialEnergy - remaining);
         }
+        edEnergy.close();
+
 
         Simulator::Destroy();
 
@@ -566,7 +583,7 @@ main(int argc, char* argv[])
         std::cout << "PDR: " << pdr << std::endl;
         std::cout << "Total run energy used: " << totalConsumedByEDs << " J" << std::endl;
         std::ofstream runTotalEnergy;
-        runTotalEnergy.open("../energy/energy.csv", std::ios::app);
+        runTotalEnergy.open("../energy_results/sf_" + to_string(spreadingFactor) + "/energies.csv", std::ios::app);
         runTotalEnergy << "GW:" << gatewayNumber;
         runTotalEnergy << ", ";
         runTotalEnergy << totalConsumedByEDs << "\n";
