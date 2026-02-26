@@ -1,4 +1,5 @@
 #include "ns3/basic-energy-source-helper.h"
+#include "ns3/energy-module.h"
 #include "ns3/lora-radio-energy-model-helper.h"
 #include "ns3/class-a-end-device-lorawan-mac.h"
 #include "ns3/command-line.h"
@@ -418,15 +419,13 @@ main(int argc, char* argv[])
         // =====================
         // Energy (End Devices)
         // =====================
-        double initialEnergy = 13320; // LiPo 1000mAh @3.7V -> ~13320J
-        double supplyVoltage = 3.3;
 
-        BasicEnergySourceHelper energySourceHelper;
-        energySourceHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(initialEnergy));
-        energySourceHelper.Set("BasicEnergySupplyVoltageV", DoubleValue(supplyVoltage));
+        // Defining the battery helper
+        GenericBatteryModelHelper batteryHelper;
 
-        // Create the source container and install the sources in the end devices
-        EnergySourceContainer energySources = energySourceHelper.Install(endDevices);
+        // Using the Li-Ion preset
+        EnergySourceContainer energySources = batteryHelper.Install(endDevices, PANASONIC_CGR18650DA_LION);
+        batteryHelper.SetCellPack(energySources, 2, 2); // 2S 2P
 
         // Using SX1276 as a base
         LoraRadioEnergyModelHelper radioEnergyHelper;
@@ -438,12 +437,6 @@ main(int argc, char* argv[])
         // Connect the radio energy model to the end devices netdevices
         DeviceEnergyModelContainer deviceModels =
             radioEnergyHelper.Install(endDevicesNetDevices, energySources);
-
-        // Trace to print the remaining energy
-        // for (auto s = energySources.Begin(); s != energySources.End(); ++s)
-        // {
-            // (*s)->TraceConnectWithoutContext("RemainingEnergy", MakeCallback(&RemainingEnergy));
-        // }
 
         // Connect trace sources
         for (auto j = endDevices.Begin(); j != endDevices.End(); ++j)
@@ -538,6 +531,12 @@ main(int argc, char* argv[])
         // Create a forwarder for each gateway
         forHelper.Install(gateways);
 
+        // Getting the initial energy through the remaining energy function because the GetInitialEnergy is inconsistent
+        std::vector<double> initialEnergy(energySources.GetN());
+        for (uint32_t i = 0; i < energySources.GetN(); ++i){
+            initialEnergy[i] = energySources.Get(i)->GetRemainingEnergy();
+        }
+
         ////////////////
         // Simulation //
         ////////////////
@@ -560,16 +559,15 @@ main(int argc, char* argv[])
         // Energy debug
         double totalConsumedByEDs = 0.0;
         for (uint32_t i = 0; i < energySources.GetN(); ++i){
+            // double initialEnergy = energySources.Get(i)->GetInitialEnergy();
             double remaining = energySources.Get(i)->GetRemainingEnergy();
             double totalConsumedByEDi = 0;
-            totalConsumedByEDi += (initialEnergy - remaining);
+            totalConsumedByEDi += (initialEnergy[i] - remaining);
             cout << "ED: " << i << ", " << "Energy used: " << totalConsumedByEDi << " J" << std::endl;
             edEnergy << totalConsumedByEDi << std::endl;
-            totalConsumedByEDs += (initialEnergy - remaining);
+            totalConsumedByEDs += totalConsumedByEDi;
         }
         edEnergy.close();
-
-
         Simulator::Destroy();
 
         //////////////////////////////////
