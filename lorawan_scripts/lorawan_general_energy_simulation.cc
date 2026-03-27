@@ -1,5 +1,4 @@
 #include "ns3/basic-energy-source-helper.h"
-#include "ns3/energy-module.h"
 #include "ns3/lora-radio-energy-model-helper.h"
 #include "ns3/class-a-end-device-lorawan-mac.h"
 #include "ns3/command-line.h"
@@ -33,11 +32,12 @@
 #include <sstream>
 #include <string>
 #include <filesystem>
-namespace fs = std::filesystem;
 
 using namespace ns3;
 using namespace lorawan;
 using namespace std;
+namespace fs = filesystem;
+
 
 NS_LOG_COMPONENT_DEFINE("ComplexLorawanNetworkExample");
 
@@ -64,6 +64,9 @@ static ofstream rxPowerResult;
 static ofstream edEnergy;
 static ofstream packetReceived;
 static ofstream packetSent;
+static ofstream finalPDR;
+ofstream runTotalEnergy;
+
 bool stochasticChannel = true;
 
 uint32_t totalReceived = 0;
@@ -72,7 +75,7 @@ uint32_t totalSent = 0;
 void 
 RemainingEnergy(double oldValue, double remainingEnergy)
 {
-    std::cout << Simulator::Now().GetSeconds()
+    cout << Simulator::Now().GetSeconds()
               << " Node "
               << Simulator::GetContext()
               << " E=" << remainingEnergy
@@ -125,25 +128,30 @@ main(int argc, char* argv[])
         fs::create_directories(energy_results_dir);
     }
 
+    string pdr_results_dir = "../pdr_results/sf_" + to_string(spreadingFactor) + '/' + channelType;
+    if (!fs::exists(pdr_results_dir)) {
+        fs::create_directories(pdr_results_dir);
+    }
+
     string path_gain_results_dir = "../path_gain_results/ns3/" + channelType;
     if (!fs::exists(path_gain_results_dir)) {
         fs::create_directories(path_gain_results_dir);
     }
 
     // Cleaning the outputs csv
-    std::ofstream clearFile("../energy_results/sf_" + to_string(spreadingFactor) + "/energies.csv", std::ios::trunc);
+    ofstream clearFile("../energy_results/sf_" + to_string(spreadingFactor) + "/energies.csv", ios::trunc);
     clearFile.close();
 
     for (int i = 0; i <= gatewaysNumberPositions; i++)
     {
         int gatewayNumber = i; // Gateway positions; need to be different from the end-device positions
-        std::cout << "---------------------------------------------"<< std::endl;
-        std::cout << "Gateway number: " << i << std::endl;
+        cout << "---------------------------------------------"<< endl;
+        cout << "Gateway number: " << i << endl;
         // positions / path_gain
         string path_gain_results = "../path_gain_results/ns3/" + channelType + '/' 
-                                                        + std::to_string(gatewayNumber) + ".csv";
+                                                        + to_string(gatewayNumber) + ".csv";
         string energy_per_device = "../energy_results/sf_" + to_string(spreadingFactor) + '/'
-                                                        + std::to_string(gatewayNumber) + ".csv";
+                                                        + to_string(gatewayNumber) + ".csv";
         rxPowerResult.open(path_gain_results);
         edEnergy.open(energy_per_device);
 
@@ -204,7 +212,7 @@ main(int argc, char* argv[])
                     }
                     try {
                         positions[k] = stof(value);
-                    } catch (const std::invalid_argument& e) {
+                    } catch (const invalid_argument& e) {
                         cerr << "Invalid float: " << value << endl;
                         positions[k] = 0.0f; // fallback
                 }
@@ -214,7 +222,7 @@ main(int argc, char* argv[])
             Vector position = mobility->GetPosition();
             position.x = positions[0];
             position.y = positions[1];
-            position.z = positions[2];
+            position.z = 1.4;
             mobility->SetPosition(position);
         }
 
@@ -228,17 +236,17 @@ main(int argc, char* argv[])
         NodeContainer gateways;
         gateways.Create(nGateways);
 
-        std::ifstream file2("../path_gain_results/coordinates.csv");
-        std::string line2;
+        ifstream file2("../path_gain_results/coordinates.csv");
+        string line2;
 
         // Vectors
-        std::vector<float> grid_positions_x;
-        std::vector<float> grid_positions_y;
-        std::vector<float> grid_positions_z;
-        std::vector<int> cell_index_x;
-        std::vector<int> cell_index_y;
+        vector<float> grid_positions_x;
+        vector<float> grid_positions_y;
+        vector<float> grid_positions_z;
+        vector<int> cell_index_x;
+        vector<int> cell_index_y;
 
-        while (std::getline(file2, line2)) {
+        while (getline(file2, line2)) {
 
             if (line2.empty()) 
                 continue;  // pula linhas vazias
@@ -251,10 +259,10 @@ main(int argc, char* argv[])
             float x, y, z;
             int idx_x, idx_y;
 
-            std::stringstream ss(line2);
+            stringstream ss(line2);
 
             if (!(ss >> x >> y >> z >> idx_x >> idx_y)) {
-                std::cerr << "Error at line: " << line2 << std::endl;
+                cerr << "Error at line: " << line2 << endl;
                 continue;
             }
 
@@ -284,7 +292,7 @@ main(int argc, char* argv[])
         ************************/
         int ed_index = 0;
         ifstream file3("../path_gain_results/coordinates.csv");
-        std::string line3;
+        string line3;
 
         Ptr<PropagationLossModel> loss;
         // Create the lora channel object
@@ -292,7 +300,7 @@ main(int argc, char* argv[])
         {
             Ptr<LogDistancePropagationLossModel> lossDist = CreateObject<LogDistancePropagationLossModel>();
             lossDist->SetPathLossExponent(3.76);
-            lossDist->SetReference(1, 7.7);
+            lossDist->SetReference(1, 32);
             loss = lossDist;
         } else if (channelType == "nakagami") {
             Ptr<NakagamiPropagationLossModel> nakagami = CreateObject<NakagamiPropagationLossModel> ();
@@ -310,41 +318,47 @@ main(int argc, char* argv[])
         } else if (channelType == "okumura") {
             Ptr<OkumuraHataPropagationLossModel> okumura = CreateObject<OkumuraHataPropagationLossModel> ();
             loss = okumura;
+            loss->SetAttribute("Frequency", DoubleValue(1000000000));
         } else if (channelType == "threegpp") {
             Ptr<ThreeGppUmaPropagationLossModel> threeGpp = CreateObject<ThreeGppUmaPropagationLossModel>();
             loss = threeGpp;
+            loss->SetAttribute("Frequency", DoubleValue(1000000000));
         } else if (channelType == "cost") {
             Ptr<Cost231PropagationLossModel> cost231 = CreateObject<Cost231PropagationLossModel>();
             loss = cost231;
-        } else if (channelType == "rt") {
-            // Informations from the radio map
-            int num_tx = 100;
-            size_t dim1 = 677;
-            size_t dim2 = 854;
+            loss->SetAttribute("BSAntennaHeight", DoubleValue(30));
+            loss->SetAttribute("Frequency", DoubleValue(1000000000));
+            loss->SetAttribute("SSAntennaHeight", DoubleValue(1.4));
+        } else if (channelType == "wix" || channelType == "wif" || channelType == "sionna") {
+                int endDeviceCounter = 0;
+                int num_tx = 100;
+                vector<vector<double>> all_tx(num_tx);
 
-            // Create a 3D vector: tx x rows x columns
-            std::vector<std::vector<std::vector<float>>> all_tx(num_tx,
-                std::vector<std::vector<float>>(dim1, std::vector<float>(dim2)));
+                for (int tx = 0; tx < num_tx; ++tx) {
+                    string filename = "../path_gain_results/" + channelType + '/' + to_string(tx) + ".csv";
+                    ifstream file(filename);
 
-            // Saving the path gains / binaries for each gateway 
-            for (int tx = 0; tx < num_tx; ++tx) {
-                std::string filename = "../path_gain_results/sionna/bin/tx_" + std::to_string(tx) + ".bin";
-                std::ifstream file(filename, std::ios::binary);
+                    if (!file.is_open()) {
+                        cerr << "Error opening file: " << filename << endl;
+                        continue;
+                    }
 
-                if (!file.is_open()) {
-                    std::cerr << "File not found " << filename << std::endl;
-                    continue;
-                }
+                    string line;
 
-                std::vector<float> data(dim1*dim2);
-                file.read(reinterpret_cast<char*>(data.data()), dim1*dim2*sizeof(float));
+                    while (getline(file, line)) {
+                        stringstream ss(line);
+                        string value;
 
-                for (size_t i = 0; i < dim1; ++i) {
-                    for (size_t j = 0; j < dim2; ++j) {
-                        all_tx[tx][i][j] = data[i*dim2 + j];
+                        double last_value = 0.0;
+
+                        // Only keep the last column
+                        while (getline(ss, value, ',')) {
+                            last_value = stod(value);
+                        }
+
+                        all_tx[tx].push_back(last_value);
                     }
                 }
-            }
 
             Ptr<MatrixPropagationLossModel> matrixLoss = CreateObject<MatrixPropagationLossModel> ();
             for (auto gw = gateways.Begin(); gw != gateways.End(); ++gw)
@@ -352,47 +366,21 @@ main(int argc, char* argv[])
                 Ptr<MobilityModel> gw_mobility = (*gw)->GetObject<MobilityModel>();
                 Vector gw_position = gw_mobility->GetPosition();
                 cout << "Gateway: " << gatewayNumber << "  gw_position:" << gw_position << endl;
-                std::cout << "--------------------------------" << std::endl;
+                cout << "--------------------------------" << endl;
+                
+                endDeviceCounter = 0;
                 for (auto k = endDevices.Begin(); k != endDevices.End(); ++k, ++ed_index)
                 {
                     Ptr<MobilityModel> mobility = (*k)->GetObject<MobilityModel>();
                     Vector position = mobility->GetPosition();
-                    position.z = 1.2;
+                    position.z = 1.4;
 
-                    float px = position.x;
-                    float py = position.y;
-
-                    // Find the end-device position in all grid positions
-                    int foundIndex = -1;
-                    for (size_t i = 0; i < grid_positions_x.size(); i++)
-                    {
-                        if (grid_positions_x[i] == px && grid_positions_y[i] == py)
-                        {
-                            foundIndex = i;
-                            break;
-                        }
-                    }
-
-                    if (foundIndex == -1)
-                    {
-                        std::cerr << "ERROR: position (" << px << ", " << py << ") not found!" << std::endl;
-                    }
-                    else
-                    {
-                        std::cout << "End-device: " << ed_index << std::endl;
-                        std::cout << "Match found at line: " << foundIndex << std::endl;
-                        std::cout << "Cell index X = " << cell_index_x[foundIndex] 
-                                << " | Cell index Y = " << cell_index_y[foundIndex] << std::endl;
-                        std::cout << "position.x= " << position.x << "  position.y= " << position.y << std::endl;
-
-                        float path_gain = all_tx[gatewayNumber][cell_index_x[foundIndex]][cell_index_y[foundIndex]];
-                        std::cout << "path_gain= " << path_gain << std::endl;
-                        std::cout << "--------------------------------" << std::endl;
-                        mobility->SetPosition(position);
-                        matrixLoss->SetLoss(gw_mobility, mobility, -path_gain); // Is the path gain for the end-device positions ?
+                    float path_gain = all_tx[gatewayNumber][endDeviceCounter];
+                    endDeviceCounter++;
+                    mobility->SetPosition(position);
+                    matrixLoss->SetLoss(gw_mobility, mobility, -path_gain); // Is the path gain for the end-device positions ?
                     }
                 }
-            }
             loss = matrixLoss;
         }
 
@@ -419,13 +407,15 @@ main(int argc, char* argv[])
         // =====================
         // Energy (End Devices)
         // =====================
+        double initialEnergy = 13320; // LiPo 1000mAh @3.7V -> ~13320J
+        double supplyVoltage = 3.3;
 
-        // Defining the battery helper
-        GenericBatteryModelHelper batteryHelper;
+        BasicEnergySourceHelper energySourceHelper;
+        energySourceHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(initialEnergy));
+        energySourceHelper.Set("BasicEnergySupplyVoltageV", DoubleValue(supplyVoltage));
 
-        // Using the Li-Ion preset
-        EnergySourceContainer energySources = batteryHelper.Install(endDevices, PANASONIC_CGR18650DA_LION);
-        batteryHelper.SetCellPack(energySources, 2, 2); // 2S 2P
+        // Create the source container and install the sources in the end devices
+        EnergySourceContainer energySources = energySourceHelper.Install(endDevices);
 
         // Using SX1276 as a base
         LoraRadioEnergyModelHelper radioEnergyHelper;
@@ -437,6 +427,12 @@ main(int argc, char* argv[])
         // Connect the radio energy model to the end devices netdevices
         DeviceEnergyModelContainer deviceModels =
             radioEnergyHelper.Install(endDevicesNetDevices, energySources);
+
+        // Trace to print the remaining energy
+        // for (auto s = energySources.Begin(); s != energySources.End(); ++s)
+        // {
+            // (*s)->TraceConnectWithoutContext("RemainingEnergy", MakeCallback(&RemainingEnergy));
+        // }
 
         // Connect trace sources
         for (auto j = endDevices.Begin(); j != endDevices.End(); ++j)
@@ -531,12 +527,6 @@ main(int argc, char* argv[])
         // Create a forwarder for each gateway
         forHelper.Install(gateways);
 
-        // Getting the initial energy through the remaining energy function because the GetInitialEnergy is inconsistent
-        std::vector<double> initialEnergy(energySources.GetN());
-        for (uint32_t i = 0; i < energySources.GetN(); ++i){
-            initialEnergy[i] = energySources.Get(i)->GetRemainingEnergy();
-        }
-
         ////////////////
         // Simulation //
         ////////////////
@@ -546,11 +536,11 @@ main(int argc, char* argv[])
         NS_LOG_INFO("Running simulation...");
         Simulator::Run();
 
-        packetReceived.open("../path_gain_results/" + channelType + "/packet_received-" + channelType + ".txt" , std::ios::app);
+        packetReceived.open("../path_gain_results/" + channelType + "/packet_received-" + channelType + ".txt" , ios::app);
         packetReceived << to_string(totalReceived) + ",";
         packetReceived.close();
 
-        packetSent.open("../path_gain_results/ns3/" + channelType + "/packet_sent-" + channelType + ".txt", std::ios::app);
+        packetSent.open("../path_gain_results/ns3/" + channelType + "/packet_sent-" + channelType + ".txt", ios::app);
         packetSent << to_string(totalSent) + ",";
         packetSent.close();
         file3.close();
@@ -559,15 +549,16 @@ main(int argc, char* argv[])
         // Energy debug
         double totalConsumedByEDs = 0.0;
         for (uint32_t i = 0; i < energySources.GetN(); ++i){
-            // double initialEnergy = energySources.Get(i)->GetInitialEnergy();
             double remaining = energySources.Get(i)->GetRemainingEnergy();
             double totalConsumedByEDi = 0;
-            totalConsumedByEDi += (initialEnergy[i] - remaining);
-            cout << "ED: " << i << ", " << "Energy used: " << totalConsumedByEDi << " J" << std::endl;
-            edEnergy << totalConsumedByEDi << std::endl;
-            totalConsumedByEDs += totalConsumedByEDi;
+            totalConsumedByEDi += (initialEnergy - remaining);
+            cout << "ED: " << i << ", " << "Energy used: " << totalConsumedByEDi << " J" << endl;
+            edEnergy << totalConsumedByEDi << endl;
+            totalConsumedByEDs += (initialEnergy - remaining);
         }
         edEnergy.close();
+
+
         Simulator::Destroy();
 
         //////////////////////////////////
@@ -575,20 +566,26 @@ main(int argc, char* argv[])
         /////////////////////////////////
         NS_LOG_INFO("Computing performance metrics...");
 
+        // saving data related to packet delivery ratio
         LoraPacketTracker& tracker = helper.GetPacketTracker();
-        std::cout << tracker.CountMacPacketsGlobally(Time(0), appStopTime + Hours(1)) << std::endl;
+        cout << tracker.CountMacPacketsGlobally(Time(0), appStopTime + Hours(1)) << endl;
         float pdr = float(totalReceived)/float(totalSent);
-        std::cout << "PDR: " << pdr << std::endl;
-        std::cout << "Total run energy used: " << totalConsumedByEDs << " J" << std::endl;
-        std::ofstream runTotalEnergy;
-        runTotalEnergy.open("../energy_results/sf_" + to_string(spreadingFactor) + "/energies.csv", std::ios::app);
+        cout << "PDR: " << pdr << endl;
+        cout << "Total run energy used: " << totalConsumedByEDs << " J" << endl;
+        finalPDR.open("../pdr_results/sf_" + to_string(spreadingFactor) + '/' + channelType + '/'
+                                                         + to_string(gatewayNumber) + ".csv");
+        finalPDR << pdr << endl;
+        finalPDR.close();
+
+        // saving data related to energy consumed
+        runTotalEnergy.open("../energy_results/sf_" + to_string(spreadingFactor) + "/energies.csv", ios::app);
         runTotalEnergy << "GW:" << gatewayNumber;
         runTotalEnergy << ", ";
         runTotalEnergy << totalConsumedByEDs << "\n";
         runTotalEnergy.close();
         totalNetworkEnergy += totalConsumedByEDs;
     }
-    std::cout << "----------------------------------------" << std::endl;
-    std::cout << "Total network energy used: " << totalNetworkEnergy << " J" << std::endl;
+    cout << "----------------------------------------" << endl;
+    cout << "Total network energy used: " << totalNetworkEnergy << " J" << endl;
     return 0;
 }
