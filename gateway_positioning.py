@@ -53,14 +53,6 @@ def _get_path_gain(path_gain_type: str):
 
     return np.array(path_gain_db)
 
-def _get_energies(sf: int):
-    energies = []
-    energies_path = os.path.join("energy_results", f"sf_{sf}", "energies.csv")
-    df = pd.read_csv(energies_path, header=None)
-    for i in range(len(df)):
-        energies.append(df.iloc[i, 1])
-    return energies
-
 # Defining the numpy seed
 np.random.seed(42)
 
@@ -103,13 +95,6 @@ for key, v in list(rx_power.items()):
     if v is None or math.isnan(v) or math.isinf(v):
         rx_power[key] = NO_SIGNAL # NO_SIGNAL replaces -inf values
 
-<<<<<<< HEAD
-=======
-G_index = list(range(G))       # 0..G-1, gateways positions number
-Nd = len(end_devices_cells)
-D_index = list(range(Nd))      # 0..Nd-1, end-device positions number
-
->>>>>>> 206e46c6a9df8cbcb661b05126a713a749db6f37
 if args.threshold is None:
     rho = min([x for x in rx_power.values() if x != -1000]) + 20 # threshold in dBm
 else:
@@ -130,27 +115,14 @@ for d in D_index:
         if (d, p_gateway) in rx_power:
             cover[(d, p_gateway)] = 1 if rx_power[(d, p_gateway)] >= rho else 0
 
-# Energy variables
-sf = 12
-energies = _get_energies(sf)
-E_index = list(range(len(energies)))
-energies = dict(zip(E_index, energies))
-
 # Optimization
 model = ConcreteModel()
-<<<<<<< HEAD
-model.P = Set(initialize=G_index) # all gateways positions = all positions
-model.D = Set(initialize=D_index) # devices
-=======
-model.P = Set(initialize=G_index)   # all gateways positions = all positions / Also energy
-model.D = Set(initialize=D_index)   # devices
->>>>>>> 206e46c6a9df8cbcb661b05126a713a749db6f37
+model.P = Set(initialize=G_index)   # all gateways positions = all positions
+model.D = Set(initialize=D_index) 
+
 
 # Cover parameter as shown before
 model.cover = Param(model.D, model.P, initialize=cover, within=Binary, default=0)
-
-# Energy parameter
-model.energy_per_gw_position = Param(model.P, initialize=energies)
 
 # Gateway positions (Set or Not)
 model.x = Var(model.P, domain=Binary)
@@ -159,20 +131,12 @@ def coverage_rule(m, d):
     # At least one gateway must cover each end-device
     return sum(m.cover[d, p_gateway] * m.x[p_gateway] for p_gateway in m.P) >= 1
 
-#def energy_rule(m):
-#    return sum(m.energy_per_gw_position[p_gateway] * m.x[p_gateway] for p_gateway in m.P) <= 2500
-
 model.coverage = Constraint(model.D, rule=coverage_rule)
-# model.energy = Constraint(rule=energy_rule)
 
 def obj_rule(m):
-    return sum(m.x[p_gateway]*m.energy_per_gw_position[p_gateway] for p_gateway in m.P)
+    return sum(m.x[p_gateway] for p_gateway in m.P)
 
 model.obj = Objective(rule=obj_rule, sense=minimize)
-
-# Debug of the model (in a .txt)
-#with open("model.txt", "w") as f:
-#    model.pprint(ostream=f)
 
 # initialize solver parameters
 solver = SolverFactory("glpk")
@@ -184,8 +148,6 @@ if (result.solver.status == SolverStatus.ok and
     # Chosen gateways
     chosen_gateways = [p for p in model.P if value(model.x[p]) > 0.5]
 
-<<<<<<< HEAD
-    # debub info
     print("\nChosen gateways (details):")
     for p in chosen_gateways:
         print(f"  p = {p}, coords = {coordinates[p]}")
@@ -235,24 +197,7 @@ if (result.solver.status == SolverStatus.ok and
     np.savez(f"results/ed_position.npz", xs_ed, ys_ed)
     # saving chosen gateways
     np.savez(f"results/chosen_gateways_{path_gain_type}.npz", chosen_gateways)
-
-    # end-devices color by received power
-    sc = plt.scatter(dev_x, dev_y, c=received_power, alpha=0.8, label="End-devices")
-
-    # gateways escolhidos (destaque)
-    plt.scatter(xs_chosen, ys_chosen, marker='s', color="black", edgecolors='k', s=80, label='Chosen gateway position')
-
 else:
         print(f"Solver did not find a feasible solution for threshold {rho}")
         print("Status:", result.solver.status)
         print("Termination:", result.solver.termination_condition)
-=======
-# debug info
-print("\nChosen gateways (details):")
-for p in chosen_gateways:
-    print(f"  p = {p}, coords = {coordinates[p]}, energy used (EDs) = {value(model.energy_per_gw_position[p])} J")
-
-total_energy = value(sum(model.energy_per_gw_position[p] * model.x[p] for p in model.P))
-print("\nTotal energy used:", total_energy)
->>>>>>> 206e46c6a9df8cbcb661b05126a713a749db6f37
-
