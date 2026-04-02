@@ -28,7 +28,7 @@ To generate stochastic or empirical channel models, you should move the source c
 
 The available flags are:
 - `--spreadingFactor`: The number of spreading factor, vary between [7, 12].
-- `--channelType`: Type of channel to used. The options are log-distance, Okumura-Hata, COST-231, Nakagami, two ray, 3gpp-UMa, WI (x3D), WI (Full 3D), Sionna. To use one of these channel you should use the following options: [`log`, `okumura`, `cost`, `nakagami` `twoRay`, `threegpp`, `wix`, `wif`, `sionna`].
+- `--channelType`: Type of channel to used. The options are log-distance, Okumura-Hata, COST-231, Nakagami, two ray, 3gpp-UMa, WI (x3D), WI (Full 3D), Sionna. To use one of these channel you should use the following options: `log`, `okumura`, `cost`, `nakagami` `twoRay`, `threegpp`, `wix`, `wif`, `sionna`.
 - `simulationTime`: Time of the simulation.
 -
 
@@ -41,7 +41,7 @@ python3 gateway_positioning -c okumura -t -120
 
 In this case, an optimization process will running with a scenario with Okumura-Hata channel and a power threshold of -120 dBm. Furthermore, the following flags can use to change the behavior of the optimization:
 
-`--channel`: Type of channel can be `okumura | cost | nakagami | threegpp | sionna | log`.
+`--channel`: Type of channel can be `okumura`, `cost`, `nakagami`, `threegpp`, `sionna`, `log`, `wif`, `wix`.
 
 `--threshold`: Power threshold in dBm.
 
@@ -53,7 +53,7 @@ python3 multi_rho_gateway_positions -c cost --max-rho -80 --min-rho -150
 
 In this case, the power threshold interval consider a minimum power of -150 dBm and maximum power of -80, with a COST-231 channel. Furthermore, the following flags can use to change the behavior of the optimization:
 
-`--channel`: Type of channel can be `okumura | cost | nakagami | threegpp | sionna | log`.
+`--channel`: Type of channel can be `okumura`, `cost`, `nakagami`, `threegpp`, `sionna`, `log`, `wif`, `wix`.
 
 `--threshold`: Power threshold in dBm.
 
