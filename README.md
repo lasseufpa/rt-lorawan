@@ -1,5 +1,7 @@
 # LoRaWAN Gateway Placement for Network Planning Using Ray Tracing-based Channel Models
 
+![graphical_abstract](https://github.com/lasseufpa/rt-lorawan/blob/main/figures/graphical_abstract.png)
+
 Network planning is a fundamental task in wireless communications, primarily focused on guaranteeing adequate coverage for every network device. In this context, the quality of any planning effort strongly depends on the channel model adopted in the design process of the simulations. Given this motivation, this work investigates how different channel models influence the placement of Long Range Wide Area Network (LoRaWAN) gateways (GWs), formulating an optimization problem that contrasts stochastic and empirical models with ray-tracing-based models. To this end, we developed a framework that integrates ray tracing (RT) simulators with a discrete-event network simulator. Using this framework to generate long range wide area network (LoRaWAN) wireless data metrics, we employ an optimization model that determines the optimized GW placement under different channel models and power constraints. Our results show that the optimized solution is highly sensitive to the chosen channel model, even when considering the same scenarios with different RT simulators, revealing a clear trade-off between computational cost and the fidelity of the solution to real-world conditions. 
 
 ## Compiling ns-3 LoRaWAN
