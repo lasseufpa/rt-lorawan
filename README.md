@@ -3,18 +3,18 @@
 ![graphical_abstract](https://github.com/lasseufpa/rt-lorawan/blob/main/figures/graphical_abstract.png)
 
 Network planning is a fundamental task in wireless communications, primarily focused on guaranteeing adequate coverage for every network device. In this context, the quality of any planning effort strongly depends on the channel model adopted in the design process of the simulations. Given this motivation, this work investigates how different channel models influence the placement of Long Range Wide Area Network (LoRaWAN) gateways (GWs), formulating an optimization problem that contrasts stochastic and empirical models with ray-tracing-based models. To this end, we developed a framework that integrates ray tracing (RT) simulators with a discrete-event network simulator. Using this framework to generate long range wide area network (LoRaWAN) wireless data metrics, we employ an optimization model that determines the optimized GW placement under different channel models and power constraints. Our results show that the optimized solution is highly sensitive to the chosen channel model, even when considering the same scenarios with different RT simulators, revealing a clear trade-off between computational cost and the fidelity of the solution to real-world conditions. 
-
+ 
 ## Compiling ns-3 LoRaWAN
 The first step to use our framework, is compiling the ns-3 LoRaWAN module. You can follow the steps defined in this [link](https://github.com/signetlabdei/lorawan) to do this. 
 
-## Installing the Python environment for Sionna RT
+## :writing_hand: Installing the Python environment for Sionna RT
 Afte compile the ns-3 module, you need to configure python environment for Sionna RT. To do so, you need to execute the following command to install the conda environment
 
 ```bash
 conda env create -f environemnt.yml
 ```
 
-## Generating realistic channels (path gain) using Sionna RT
+## :test_tube: Generating realistic channels (path gain) using Sionna RT
 With all set, you can generate new path gains data for further optimization, considering a grid with 100 positions equally spaced, executing the following script:
 
 ```python
@@ -33,7 +33,7 @@ The available flags are:
 - `--channelType`: Type of channel to used. The options are log-distance, Okumura-Hata, COST-231, Nakagami, two ray, 3gpp-UMa, WI (x3D), WI (Full 3D), Sionna. To use one of these channel you should use the following options: `log`, `okumura`, `cost`, `nakagami` `twoRay`, `threegpp`, `wix`, `wif`, `sionna`.
 - `simulationTime`: Time of the simulation.
 
-## Gateway placement optimization
+## :gear Gateway placement optimization
 In order to perform a gateway placement optimization, with a fixed threshold you can use the following command:
 
 ```python
@@ -61,3 +61,28 @@ In this case, the power threshold interval consider a minimum power of -150 dBm 
 `--max-rho`: Maximum threshold power.
 
 `--min-rho`: Minimum threshold power.
+
+## :bar_chart: Result plots
+`plot_position.py`: Plot the grid with each position obtained from the optimization model.
+
+`plot_pdr.py`: Plot packet delivery ratio (PDR) bar char for different channel models.
+
+`plot_time.py`: Plot bar chart related to the simulation time to obtain physical-level metrics for different channel models.
+
+`plot_multi_threshold.py`: Plot line chart related to the number of gateways suggested for different received power thresholds.
+
+## :information_source: Credits
+
+If you benefit from this work, please cite on your publications using:
+
+```
+@misc{modesto2026lorawangatewayplacementnetwork,
+      title={LoRaWAN Gateway Placement for Network Planning Using Ray Tracing-based Channel Models}, 
+      author={Cláudio Modesto and Lucas Mozart and Glauco Gonçalves and Cleverson Nahum and Bruno Castro and Aldebaro Klautau},
+      year={2026},
+      eprint={2603.29105},
+      archivePrefix={arXiv},
+      primaryClass={cs.NI},
+      url={https://arxiv.org/abs/2603.29105}, 
+}
+```
