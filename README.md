@@ -32,7 +32,6 @@ The available flags are:
 - `--spreadingFactor`: The number of spreading factor, vary between [7, 12].
 - `--channelType`: Type of channel to used. The options are log-distance, Okumura-Hata, COST-231, Nakagami, two ray, 3gpp-UMa, WI (x3D), WI (Full 3D), Sionna. To use one of these channel you should use the following options: `log`, `okumura`, `cost`, `nakagami` `twoRay`, `threegpp`, `wix`, `wif`, `sionna`.
 - `simulationTime`: Time of the simulation.
--
 
 ## Gateway placement optimization
 In order to perform a gateway placement optimization, with a fixed threshold you can use the following command:
