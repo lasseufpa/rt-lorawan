@@ -99,11 +99,6 @@ int
 main(int argc, char* argv[])
 {
     CommandLine cmd(__FILE__);
-    cmd.AddValue("nDevices", "Number of end devices to include in the simulation", nDevices);
-    cmd.AddValue("radius", "The radius (m) of the area to simulate", radiusMeters);
-    cmd.AddValue("realisticChannel",
-                 "Whether to use a more realistic channel model",
-                 realisticChannelModel);
     cmd.AddValue("simulationTime", "The time (s) for which to simulate", simulationTimeSeconds);
     cmd.AddValue("appPeriod",
                  "The period in seconds to be used by periodically transmitting applications",
@@ -249,9 +244,8 @@ main(int argc, char* argv[])
         while (getline(file2, line2)) {
 
             if (line2.empty()) 
-                continue;  // pula linhas vazias
+                continue;  
 
-            // trocar vírgulas por espaço
             for (char &c : line2) {
                 if (c == ',') c = ' ';
             }
