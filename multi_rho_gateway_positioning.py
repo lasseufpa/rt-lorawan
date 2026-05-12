@@ -33,6 +33,11 @@ parser.add_argument(
     type=float, required=False
 )
 
+parser.add_argument(
+    "--scenario", "-s", help="Type of scenario to be used", 
+    type=str, required=False
+)
+
 args = parser.parse_args()
 
 if args.max_rho is not None and args.min_rho is None:
@@ -49,8 +54,8 @@ if args.max_rho is not None and args.min_rho is not None and args.threshold is n
     print("The threshold value will be ignored. It will assume the maximum and minimum range of threshold")
 
 ROOT_DIR = "results" # path to root database directory
+OUTPUT_PATH_NAME = f"{ROOT_DIR}/{args.scenario}"
 # Create the output directory
-OUTPUT_PATH_NAME = f"{ROOT_DIR}/figures"
 if not os.path.isdir(OUTPUT_PATH_NAME):
     pathlib.Path(OUTPUT_PATH_NAME).mkdir(parents=True, exist_ok=True)
 
@@ -58,20 +63,21 @@ if not os.path.isdir(OUTPUT_PATH_NAME):
 def _get_path_gain(path_gain_type: str):
     path_gain_db = []
     if path_gain_type == "sionna":
-        files = sorted(glob.glob(f"path_gain_results/{path_gain_type}/*.csv"))
+        files = sorted(glob.glob(f"path_gain_results/{path_gain_type}/{args.scenario}/*.csv"))
         for fname in files:
+            if not os.path.basename(fname).split(".")[0].isdigit():
+                continue
             df = pd.read_csv(f"{fname}", header=None)
             path_gain_db.append(df)
     elif path_gain_type == "wix" or path_gain_type == "wif":
-        files = sorted(glob.glob(f"path_gain_results/{path_gain_type}/*.csv"))
+        files = sorted(glob.glob(f"path_gain_results/{path_gain_type}/{args.scenario}/*.csv"))
         for fname in files:
             df = pd.read_csv(f"{fname}", header=None)
             path_gain_db.append(df)
     else:
-        files = sorted(glob.glob(f"path_gain_results/ns3/{path_gain_type}/*.csv"))
+        files = sorted(glob.glob(f"path_gain_results/ns3/{path_gain_type}/{args.scenario}/*.csv"))
         for fname in files:
             df = pd.read_csv(f"{fname}", header=None)
-            
             path_gain_db.append(df)
 
     return np.array(path_gain_db)
@@ -80,7 +86,7 @@ def _get_path_gain(path_gain_type: str):
 np.random.seed(42)
 
 # read CSV
-devices_df = pd.read_csv("path_gain_results/coordinates.csv", header=None)
+devices_df = pd.read_csv(f"path_gain_results/{args.scenario}_coordinates.csv", header=None)
 
 # end_device positions -> cell indexes
 end_devices_cells = list(zip(devices_df[3], devices_df[4]))
@@ -101,7 +107,23 @@ PATH_GAIN_COLUMN = -1
 
 G_index = list(range(G))       # 0..G-1
 Nd = len(end_devices_cells)
-D_index = [1, 2, 4, 9, 10, 12, 14, 18, 19, 20, 22, 23, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 40, 41, 42, 43, 44, 50, 51, 52, 53, 54, 55, 59, 60, 61, 62, 63, 64, 68, 69, 70, 71, 72, 73, 74, 75, 81, 82, 83, 86, 87, 91, 98]
+if args.scenario == "etoile":
+    D_index = [1, 2, 4, 9, 10, 12, 14, 18,
+                19, 20, 22, 23, 26, 27, 28,
+                30, 31, 32, 33, 34, 35, 36,
+                40, 41, 42, 43, 44, 50, 51,
+                52, 53, 54, 55, 59, 60, 61,
+                62, 63, 64, 68, 69, 70, 71,
+                72, 73, 74, 75, 81, 82, 83,
+                86, 87, 91, 98]
+elif args.scenario == "canyon":
+    D_index = [3, 4, 8, 9, 16, 17, 21, 22, 29,
+               30, 34, 35, 39, 40, 41, 42, 43,
+               44, 45, 46, 47, 48, 49, 50, 51,
+               52, 53, 54, 55, 56, 57, 58, 59,
+               60, 61, 62, 63, 64, 68, 69, 73,
+               74, 81, 82, 86, 87, 94, 95, 99,
+               100]
 
 for p_gateway in range(G): # Power that a ED receivers from each gateway in all positions available
     for d, (ix, iy) in enumerate(end_devices_cells):
@@ -220,8 +242,8 @@ for threshold in rho:
         
 print(number_of_gws)
 # saving receiver power for each end-device
-np.savez(f"results/multi_rho_receiver_power_{path_gain_type}.npz", all_received_power)
+np.savez(f"{OUTPUT_PATH_NAME}/multi_rho_receiver_power_{path_gain_type}.npz", all_received_power)
 # saving all position coordinates
-np.savez(f"results/multi_rho_all_position.npz", all_dev_x, all_dev_y)
+np.savez(f"{OUTPUT_PATH_NAME}/multi_rho_all_position.npz", all_dev_x, all_dev_y)
 # saving the number of gateways deployed
-np.savez(f"results/multi_number_of_gws_{path_gain_type}.npz", number_of_gws, rho)
+np.savez(f"{OUTPUT_PATH_NAME}/multi_number_of_gws_{path_gain_type}.npz", number_of_gws, rho)
