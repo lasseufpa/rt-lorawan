@@ -25,6 +25,7 @@
 #include "ns3/simulator.h"
 
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 #include<vector>
 #include <iostream>
@@ -42,13 +43,14 @@ namespace fs = filesystem;
 NS_LOG_COMPONENT_DEFINE("ComplexLorawanNetworkExample");
 
 // Network settings
-int nDevices = 100;           //!< Number of end device nodes to create
+int nDevices = 104;         //!< Number of end device nodes to create
 int nGateways = 1;            //!< Number of gateway nodes to create
-int gatewaysNumberPositions = 99;  //!< Number of possibles gateway positions
+int gatewaysNumberPositions = 104;  //!< Number of possibles gateway positions
 double radiusMeters = 6400;         //!< Radius (m) of the deployment
 int spreadingFactor = 7;         //!< Radius (m) of the deployment
 double simulationTimeSeconds = 600; //!< Scenario duration (s) in simulated time
 string channelType = "nakagami"; //!< type of stochastic channel
+string scenario = "etoile"; //!< type of stochastic channel
 
 
 // Channel model
@@ -65,6 +67,7 @@ static ofstream edEnergy;
 static ofstream packetReceived;
 static ofstream packetSent;
 static ofstream finalPDR;
+static ofstream totalTime;
 ofstream runTotalEnergy;
 
 bool stochasticChannel = true;
@@ -99,6 +102,11 @@ int
 main(int argc, char* argv[])
 {
     CommandLine cmd(__FILE__);
+    cmd.AddValue("nDevices", "Number of end devices to include in the simulation", nDevices);
+    cmd.AddValue("radius", "The radius (m) of the area to simulate", radiusMeters);
+    cmd.AddValue("realisticChannel",
+                 "Whether to use a more realistic channel model",
+                 realisticChannelModel);
     cmd.AddValue("simulationTime", "The time (s) for which to simulate", simulationTimeSeconds);
     cmd.AddValue("appPeriod",
                  "The period in seconds to be used by periodically transmitting applications",
@@ -109,6 +117,9 @@ main(int argc, char* argv[])
     cmd.AddValue("spreadingFactor",
                  "Spreading factor number that will be used in the simulation",
                  spreadingFactor);
+    cmd.AddValue("scenario",
+                 "Type of scenario used to be used in the simulation",
+                 scenario);
     cmd.Parse(argc, argv);
 
     // Set up logging
@@ -118,32 +129,49 @@ main(int argc, char* argv[])
      *  Setup  *
      ***********/
 
-    string energy_results_dir = "../energy_results/sf_" + to_string(spreadingFactor);
-    if (!fs::exists(energy_results_dir)) {
-        fs::create_directories(energy_results_dir);
+    if (scenario == "canyon") {
+        gatewaysNumberPositions = 103;
+        nDevices = 104;
+
+    } else if (scenario == "etoile") {
+        gatewaysNumberPositions = 99;
+        nDevices = 100;
     }
 
-    string pdr_results_dir = "../pdr_results/sf_" + to_string(spreadingFactor) + '/' + channelType;
-    if (!fs::exists(pdr_results_dir)) {
-        fs::create_directories(pdr_results_dir);
+    string energyResultsDir = "../energy_results/" + channelType + "/sf_" + to_string(spreadingFactor);
+    if (!fs::exists(energyResultsDir)) {
+        fs::create_directories(energyResultsDir);
     }
 
-    string path_gain_results_dir = "../path_gain_results/ns3/" + channelType;
-    if (!fs::exists(path_gain_results_dir)) {
-        fs::create_directories(path_gain_results_dir);
+    string pdrResultsDir = "../pdr_results/sf_" + to_string(spreadingFactor) + 
+                                                            '/' + channelType + '/' + scenario;
+    if (!fs::exists(pdrResultsDir)) {
+        fs::create_directories(pdrResultsDir);
+    }
+
+    string pathGainResultsDir = "../path_gain_results/ns3/" + channelType + '/' + scenario;
+    if (!fs::exists(pathGainResultsDir)) {
+        fs::create_directories(pathGainResultsDir);
+    }
+
+    string timeResultsDir = "../time_results/" + scenario;
+    if (!fs::exists(timeResultsDir)) {
+        fs::create_directories(timeResultsDir);
     }
 
     // Cleaning the outputs csv
     ofstream clearFile("../energy_results/sf_" + to_string(spreadingFactor) + "/energies.csv", ios::trunc);
     clearFile.close();
 
+    double totalDuration = 0.0;
     for (int i = 0; i <= gatewaysNumberPositions; i++)
     {
+        auto start = std::chrono::high_resolution_clock::now();
         int gatewayNumber = i; // Gateway positions; need to be different from the end-device positions
         cout << "---------------------------------------------"<< endl;
         cout << "Gateway number: " << i << endl;
         // positions / path_gain
-        string path_gain_results = "../path_gain_results/ns3/" + channelType + '/' 
+        string path_gain_results = "../path_gain_results/ns3/" + channelType + '/' + scenario + '/' 
                                                         + to_string(gatewayNumber) + ".csv";
         string energy_per_device = "../energy_results/sf_" + to_string(spreadingFactor) + '/'
                                                         + to_string(gatewayNumber) + ".csv";
@@ -189,7 +217,7 @@ main(int argc, char* argv[])
         // Assign a mobility model to each node
         mobility.Install(endDevices);
 
-        ifstream file("../path_gain_results/coordinates.csv");
+        ifstream file("../path_gain_results/" + scenario + "_coordinates.csv");
         string line;
 
         // Make it so that nodes are at a certain height > 0 
@@ -231,7 +259,7 @@ main(int argc, char* argv[])
         NodeContainer gateways;
         gateways.Create(nGateways);
 
-        ifstream file2("../path_gain_results/coordinates.csv");
+        ifstream file2("../path_gain_results/" + scenario + "_coordinates.csv");
         string line2;
 
         // Vectors
@@ -244,8 +272,9 @@ main(int argc, char* argv[])
         while (getline(file2, line2)) {
 
             if (line2.empty()) 
-                continue;  
+                continue;  // pula linhas vazias
 
+            // trocar vírgulas por espaço
             for (char &c : line2) {
                 if (c == ',') c = ' ';
             }
@@ -285,7 +314,7 @@ main(int argc, char* argv[])
         *  Create the channel  *
         ************************/
         int ed_index = 0;
-        ifstream file3("../path_gain_results/coordinates.csv");
+        ifstream file3("../path_gain_results" + scenario + "_coordinates.csv");
         string line3;
 
         Ptr<PropagationLossModel> loss;
@@ -325,11 +354,10 @@ main(int argc, char* argv[])
             loss->SetAttribute("SSAntennaHeight", DoubleValue(1.4));
         } else if (channelType == "wix" || channelType == "wif" || channelType == "sionna") {
                 int endDeviceCounter = 0;
-                int num_tx = 100;
-                vector<vector<double>> all_tx(num_tx);
+                vector<vector<double>> all_tx(nDevices);
 
-                for (int tx = 0; tx < num_tx; ++tx) {
-                    string filename = "../path_gain_results/" + channelType + '/' + to_string(tx) + ".csv";
+                for (int tx = 0; tx < nDevices; ++tx) {
+                    string filename = "../path_gain_results/" + channelType + '/' + scenario + '/' + to_string(tx) + ".csv";
                     ifstream file(filename);
 
                     if (!file.is_open()) {
@@ -372,7 +400,7 @@ main(int argc, char* argv[])
                     float path_gain = all_tx[gatewayNumber][endDeviceCounter];
                     endDeviceCounter++;
                     mobility->SetPosition(position);
-                    matrixLoss->SetLoss(gw_mobility, mobility, -path_gain); // Is the path gain for the end-device positions ?
+                    matrixLoss->SetLoss(gw_mobility, mobility, -path_gain);
                     }
                 }
             loss = matrixLoss;
@@ -454,14 +482,22 @@ main(int argc, char* argv[])
             {
                 Ptr<MobilityModel> mobility = (*k)->GetObject<MobilityModel>();
                 Vector position = mobility->GetPosition();
-                position.z = 30;
+                if (scenario == "canyon") {
+                    position.z = 60;
+                } else if (scenario == "etoile") {
+                    position.z = 30;
+                }
                 mobility->SetPosition(position);
                 rxPower = channel->GetRxPower(10, gw_mobility, mobility);
                 rxPowerResult << to_string(position.x) + "," + to_string(position.y) + "," + 
                                                         to_string(position.z) + "," + to_string(rxPower) << endl;
             }
         }
-
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration = end - start;
+        totalDuration += duration.count();
+        std::cout << "Execution time: " << duration.count() << " seconds\n";
+        std::cout << "Total execution time: " << totalDuration << " seconds\n";
         NS_LOG_DEBUG("Completed configuration");
 
         /*********************************************
@@ -530,11 +566,11 @@ main(int argc, char* argv[])
         NS_LOG_INFO("Running simulation...");
         Simulator::Run();
 
-        packetReceived.open("../path_gain_results/" + channelType + "/packet_received-" + channelType + ".txt" , ios::app);
+        packetReceived.open("../path_gain_results/" + channelType + '/' + scenario + "/packet_received-" + channelType + ".txt" , ios::app);
         packetReceived << to_string(totalReceived) + ",";
         packetReceived.close();
 
-        packetSent.open("../path_gain_results/ns3/" + channelType + "/packet_sent-" + channelType + ".txt", ios::app);
+        packetSent.open("../path_gain_results/ns3/" + channelType + '/' + scenario + "/packet_sent-" + channelType + ".txt", ios::app);
         packetSent << to_string(totalSent) + ",";
         packetSent.close();
         file3.close();
@@ -566,19 +602,26 @@ main(int argc, char* argv[])
         float pdr = float(totalReceived)/float(totalSent);
         cout << "PDR: " << pdr << endl;
         cout << "Total run energy used: " << totalConsumedByEDs << " J" << endl;
-        finalPDR.open("../pdr_results/sf_" + to_string(spreadingFactor) + '/' + channelType + '/'
-                                                         + to_string(gatewayNumber) + ".csv");
+        finalPDR.open("../pdr_results/sf_" + to_string(spreadingFactor) + '/' + channelType + '/' + scenario + '/'
+                                                         + to_string(gatewayNumber) + ".csv", ios::app);
         finalPDR << pdr << endl;
         finalPDR.close();
+        totalReceived = 0;
+        totalSent = 0;
 
         // saving data related to energy consumed
-        runTotalEnergy.open("../energy_results/sf_" + to_string(spreadingFactor) + "/energies.csv", ios::app);
+        runTotalEnergy.open(energyResultsDir + "/energies.csv", ios::app);
         runTotalEnergy << "GW:" << gatewayNumber;
         runTotalEnergy << ", ";
         runTotalEnergy << totalConsumedByEDs << "\n";
         runTotalEnergy.close();
         totalNetworkEnergy += totalConsumedByEDs;
     }
+
+    totalTime.open(timeResultsDir + '/' + channelType + ".csv", ios::app);
+    totalTime << to_string(totalDuration) << endl;
+    totalTime.close();
+
     cout << "----------------------------------------" << endl;
     cout << "Total network energy used: " << totalNetworkEnergy << " J" << endl;
     return 0;
