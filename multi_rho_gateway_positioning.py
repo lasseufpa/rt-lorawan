@@ -1,15 +1,23 @@
+"""
+Script to perform gateway placament optimization
+with sensitiviy analysis with received power threshold
+
+LASSE
+Authors:
+- Cláudio Modesto
+- Lucas Mozart
+"""
+
+
 import os
 import glob
 import pathlib
+import argparse
+import re
+import math
 import pandas as pd
 import numpy as np
-import re
-import networkx as nx
-import matplotlib.pyplot as plt
-import math
 from pyomo.environ import *
-from matplotlib import pyplot as plt
-import argparse
 
 parser = argparse.ArgumentParser()
 
@@ -51,7 +59,8 @@ if args.max_rho is not None and args.min_rho is not None:
         raise ValueError("The maximum should be greater than the minimum threshold!")
 
 if args.max_rho is not None and args.min_rho is not None and args.threshold is not None:
-    print("The threshold value will be ignored. It will assume the maximum and minimum range of threshold")
+    print("The threshold value will be ignored. \
+                    It will assume the maximum and minimum range of threshold")
 
 ROOT_DIR = "results" # path to root database directory
 OUTPUT_PATH_NAME = f"{ROOT_DIR}/{args.scenario}"
@@ -59,23 +68,31 @@ OUTPUT_PATH_NAME = f"{ROOT_DIR}/{args.scenario}"
 if not os.path.isdir(OUTPUT_PATH_NAME):
     pathlib.Path(OUTPUT_PATH_NAME).mkdir(parents=True, exist_ok=True)
 
-
 def _get_path_gain(path_gain_type: str):
     path_gain_db = []
     if path_gain_type == "sionna":
-        files = sorted(glob.glob(f"path_gain_results/{path_gain_type}/{args.scenario}/*.csv"))
+        files = sorted(
+            glob.glob(f"path_gain_results/{path_gain_type}/{args.scenario}/*.csv"),
+            key=lambda x: int(os.path.splitext(os.path.basename(x))[0])
+        )
         for fname in files:
             if not os.path.basename(fname).split(".")[0].isdigit():
                 continue
             df = pd.read_csv(f"{fname}", header=None)
             path_gain_db.append(df)
     elif path_gain_type == "wix" or path_gain_type == "wif":
-        files = sorted(glob.glob(f"path_gain_results/{path_gain_type}/{args.scenario}/*.csv"))
+        files = sorted(
+            glob.glob(f"path_gain_results/{path_gain_type}/{args.scenario}/*.csv"),
+            key=lambda x: int(os.path.splitext(os.path.basename(x))[0])
+        )
         for fname in files:
             df = pd.read_csv(f"{fname}", header=None)
             path_gain_db.append(df)
     else:
-        files = sorted(glob.glob(f"path_gain_results/ns3/{path_gain_type}/{args.scenario}/*.csv"))
+        files = sorted(
+            glob.glob(f"path_gain_results/ns3/{path_gain_type}/{args.scenario}/*.csv"),
+            key=lambda x: int(os.path.splitext(os.path.basename(x))[0])
+        )
         for fname in files:
             df = pd.read_csv(f"{fname}", header=None)
             path_gain_db.append(df)
@@ -105,10 +122,10 @@ path_gain_type = args.channel_type
 path_gain_db = _get_path_gain(path_gain_type)
 PATH_GAIN_COLUMN = -1
 
-G_index = list(range(G))       # 0..G-1
+g_index = list(range(G))
 Nd = len(end_devices_cells)
 if args.scenario == "etoile":
-    D_index = [1, 2, 4, 9, 10, 12, 14, 18,
+    d_index = [1, 2, 4, 9, 10, 12, 14, 18,
                 19, 20, 22, 23, 26, 27, 28,
                 30, 31, 32, 33, 34, 35, 36,
                 40, 41, 42, 43, 44, 50, 51,
@@ -117,7 +134,7 @@ if args.scenario == "etoile":
                 72, 73, 74, 75, 81, 82, 83,
                 86, 87, 91, 98]
 elif args.scenario == "canyon":
-    D_index = [3, 4, 8, 9, 16, 17, 21, 22, 29,
+    d_index = [3, 4, 8, 9, 16, 17, 21, 22, 29,
                30, 34, 35, 39, 40, 41, 42, 43,
                44, 45, 46, 47, 48, 49, 50, 51,
                52, 53, 54, 55, 56, 57, 58, 59,
@@ -154,16 +171,16 @@ for threshold in rho:
     print(f"Current threshold: {threshold}")
     # Defining an cover dict
     cover = {}
-    for d in D_index:
-        for p_gateway in G_index:
+    for d in d_index:
+        for p_gateway in g_index:
             # This indicates whether the power threshold is being reached in each
             # end-device for each gateway -> simplification to 0 or 1
             if (d, p_gateway) in rx_power:
                 cover[(d, p_gateway)] = 1 if rx_power[(d, p_gateway)] >= threshold else 0
 
     model = ConcreteModel()
-    model.P = Set(initialize=G_index)   # all gateways positions = all positions
-    model.D = Set(initialize=D_index)   # devices
+    model.P = Set(initialize=g_index)   # all gateways positions = all positions
+    model.D = Set(initialize=d_index)   # devices
 
     # Cover parameter as shown before
     model.cover = Param(model.D, model.P, initialize=cover, within=Binary, default=0)
@@ -178,6 +195,9 @@ for threshold in rho:
     model.coverage = Constraint(model.D, rule=coverage_rule)
 
     def obj_rule(m):
+        """
+        Objective function to be optimized
+        """
         return sum(m.x[p_gateway] for p_gateway in m.P)
 
     model.obj = Objective(rule=obj_rule, sense=minimize)
@@ -196,22 +216,20 @@ for threshold in rho:
         for p in chosen_gateways:
             print(f"  p = {p}, coords = {coordinates[p]}")
 
-        received_power = np.zeros(len(G_index))
-        for d in D_index:
-            total_mW = 0.0
-            for p in G_index:
+        received_power = np.zeros(len(g_index))
+        for d in d_index:
+            total_mw = 0.0
+            for p in g_index:
                 if (d, p) not in rx_power:
                     continue
                 if value(model.x[p]) > 0.5:   # chosen gateway
                     rp_dbm = rx_power[(d, p)]
-                    
                     # converting dBm -> mW
                     rp_mw = 10**(rp_dbm / 10.0)
-                    
-                    total_mW += rp_mw
+                    total_mw += rp_mw
             # avoiding problem with log(0)
-            if total_mW > 0:
-                received_power[d] = 10 * np.log10(total_mW) # back to dBm
+            if total_mw > 0:
+                received_power[d] = 10 * np.log10(total_mw) # back to dBm
             else:
                 received_power[d] = NO_SIGNAL # very negative value
 
@@ -221,13 +239,12 @@ for threshold in rho:
         dev_y = devices_df[1].values
 
         # gateways positions
-        xs_gate = [coordinates[p][0] for p in G_index]
-        ys_gate = [coordinates[p][1] for p in G_index]
+        xs_gate = [coordinates[p][0] for p in g_index]
+        ys_gate = [coordinates[p][1] for p in g_index]
 
         # chosen gateways positions
         xs_chosen = [coordinates[p][0] for p in chosen_gateways]
         ys_chosen = [coordinates[p][1] for p in chosen_gateways]
-        
         all_xs_chosen.append(xs_chosen)
         all_ys_chosen.append(ys_chosen)
         all_dev_x.append(dev_x)
@@ -239,7 +256,7 @@ for threshold in rho:
         print("Termination:", result.solver.termination_condition)
         number_of_gws.append(np.inf)
         continue
-        
+
 print(number_of_gws)
 # saving receiver power for each end-device
 np.savez(f"{OUTPUT_PATH_NAME}/multi_rho_receiver_power_{path_gain_type}.npz", all_received_power)
