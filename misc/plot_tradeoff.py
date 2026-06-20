@@ -1,11 +1,11 @@
 """
-Script to plot simulation time to generate
-physical level metrics using different channel models
+Script to plot tradeoff between MSE and simulation time
 
 LASSE
 Authors:
 - Cláudio Modesto
 """
+
 
 import os
 import pathlib
@@ -24,6 +24,7 @@ labels = ["Okumura-Hata", "COST-231", "Log-distance", "3GPP-UMa",
 colors = ["green", "brown", "skyblue", "goldenrod", "red", "blue", "purple"]
 scenarios = ["etoile", "canyon"]
 
+plt.figure(figsize=(5, 5))  # width, height in inches
 counter = 0
 for scenario in scenarios:
     plt.subplot(2, 1, counter+1)
@@ -61,22 +62,32 @@ for scenario in scenarios:
     std_time = [std_okumura_time, std_cost_time, std_log_time, std_threegpp_time,
                                                 std_sionna_time, std_full3d_time, std_x3d_time]
 
+    mses = np.load(f"../results/{scenario}/mses_gt_wix.npz")["arr_0"]
 
     if scenario == "etoile":
         FANCY_TITLE = "Etoile"
     elif scenario == "canyon":
         FANCY_TITLE = "St. Canyon"
 
+    labels = ["Okumura-Hata", "COST-231", "Log-distance",
+                                "3GPP-UMa", "Sionna", "WI (Full 3D)"]
+    markers = ['o', 's', '^', 'D', 'P', 'X']
+
     avg_time = np.array(avg_time)/60
-    plt.title(f"Simulation time in grid {counter+1} and {FANCY_TITLE}")
-    plt.ylim(0, 85)
+    plt.xlim(0, 1000)
+    plt.title(f"MSE x simulation time in grid {counter+1} ({FANCY_TITLE})")
     plt.gcf().supylabel("Average simulation time (minutes)", fontsize=14)
-    bars = plt.bar(labels, avg_time, capsize=5, width=0.6, color=colors)
-    plt.bar_label(bars, fmt="%0.2f", padding=3, fontweight='bold')
+    for i in range(len(labels)):
+        plt.scatter(mses[i],
+                    avg_time[:-1][i],
+                    marker=markers[i],
+                    label=labels[i],
+                    color=colors[i])
     counter += 1
     plt.yticks(fontsize=12)
-    plt.xticks(rotation=45)
+    plt.xticks(fontsize=12)
+    plt.legend()
 
 plt.tight_layout()
-plt.xlabel("Channel models", fontsize=14)
-plt.savefig("figures/simulation_time.pdf", bbox_inches='tight')
+plt.xlabel("MSE", fontsize=14)
+plt.savefig(f"figures/tradeoff.pdf", bbox_inches='tight')

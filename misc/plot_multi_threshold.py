@@ -1,7 +1,22 @@
+"""
+Script to plot the number of gateways considering
+different received power threshold
+
+LASSE
+Authors:
+- Cláudio Modesto
+"""
+
+
 import os
+import argparse
 import pathlib
 from matplotlib import pyplot as plt
 import numpy as np
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--scenario", type=str)
+args = parser.parse_args()
 
 si_channels = ["cost", "log", "okumura", "threegpp"]
 sd_channels = ["wix", "sionna", "wif"]
@@ -22,7 +37,7 @@ counter = 0
 plt.subplot(2, 1, 1)
 plt.title(r"Number of gateways across different values of $\rho$")
 for channel in si_channels:
-    number_gws_data = np.load(f"../results/multi_number_of_gws_{channel}.npz")
+    number_gws_data = np.load(f"../results/{args.scenario}/multi_number_of_gws_{channel}.npz")
     number_gws = number_gws_data["arr_0"]
     all_number_of_gws.append(number_gws)
     power_thresholds = number_gws_data["arr_1"]
@@ -56,7 +71,7 @@ plt.subplot(2, 1, 2)
 all_number_of_gws = []
 counter = 0
 for channel in sd_channels:
-    number_gws_data = np.load(f"../results/multi_number_of_gws_{channel}.npz")
+    number_gws_data = np.load(f"../results/{args.scenario}/multi_number_of_gws_{channel}.npz")
     number_gws = number_gws_data["arr_0"]
     all_number_of_gws.append(number_gws)
     power_thresholds = number_gws_data["arr_1"]
@@ -91,7 +106,6 @@ for channel in sd_channels:
 
     # find last feasible index
     last_idx = np.where(mask_ok)[0][-1]
-    
     number_of_unf = np.sum(mask_inf)
     if number_of_unf == 0:
         continue
@@ -109,6 +123,4 @@ plt.gcf().supylabel("Required number of gateways", fontsize=15)
 plt.xlabel(r"$\rho$", fontsize=14)
 plt.ylim(0, 24)
 plt.tight_layout()
-
-
 plt.savefig("figures/number_of_gws.pdf", bbox_inches="tight")
