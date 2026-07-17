@@ -353,9 +353,7 @@ main(int argc, char* argv[])
             loss->SetAttribute("Frequency", DoubleValue(1000000000));
             loss->SetAttribute("SSAntennaHeight", DoubleValue(1.4));
         } else if (channelType == "wix" || channelType == "wif" || channelType == "sionna") {
-                int endDeviceCounter = 0;
                 vector<vector<double>> all_tx(nDevices);
-
                 for (int tx = 0; tx < nDevices; ++tx) {
                     string filename = "../path_gain_results/" + channelType + '/' + scenario + '/' + to_string(tx) + ".csv";
                     ifstream file(filename);
@@ -383,6 +381,7 @@ main(int argc, char* argv[])
                 }
 
             Ptr<MatrixPropagationLossModel> matrixLoss = CreateObject<MatrixPropagationLossModel> ();
+            int endDeviceCounter = 0;
             for (auto gw = gateways.Begin(); gw != gateways.End(); ++gw)
             {
                 Ptr<MobilityModel> gw_mobility = (*gw)->GetObject<MobilityModel>();
@@ -390,7 +389,6 @@ main(int argc, char* argv[])
                 cout << "Gateway: " << gatewayNumber << "  gw_position:" << gw_position << endl;
                 cout << "--------------------------------" << endl;
                 
-                endDeviceCounter = 0;
                 for (auto k = endDevices.Begin(); k != endDevices.End(); ++k, ++ed_index)
                 {
                     Ptr<MobilityModel> mobility = (*k)->GetObject<MobilityModel>();
