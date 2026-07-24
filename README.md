@@ -83,14 +83,15 @@ In this case, the power threshold interval consider a minimum power of -150 dBm 
 If you benefit from this work, please cite on your publications using:
 
 ```
-@ARTICLE{modesto2026,
+@ARTICLE{Modesto2026,
   author={Modesto, Cláudio and Mozart, Lucas and Gonçalves, Glauco and Nahum, Cleverson and Castro, Bruno and Klautau, Aldebaro},
   journal={IEEE Open Journal of the Communications Society}, 
   title={LoRaWAN Gateway Placement for Network Planning Using Ray Tracing-Based Channel Models}, 
   year={2026},
-  volume={},
+  volume={7},
   number={},
-  pages={1-1},
-  keywords={Modeling;Channel models;LoRaWAN;Simulation;Internet of Things;Optimization;Distance measurement;Planning;Ray tracing;Costing;Discrete-event simulators;internet of things (IoT);optimization;site-specific},
-  doi={10.1109/OJCOMS.2026.3704345
+  pages={6612-6624},
+  keywords={Modeling;Channel models;LoRaWAN;Simulation;Internet of Things;Optimization;Distance measurement;Planning;Ray tracing;Costing;Discrete-event simulators;Internet of Things (IoT);optimization;site-specific},
+  doi={10.1109/OJCOMS.2026.3704345}}
+
 ```
