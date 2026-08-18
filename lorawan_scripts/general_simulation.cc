@@ -448,12 +448,6 @@ main(int argc, char* argv[])
         DeviceEnergyModelContainer deviceModels =
             radioEnergyHelper.Install(endDevicesNetDevices, energySources);
 
-        // Trace to print the remaining energy
-        // for (auto s = energySources.Begin(); s != energySources.End(); ++s)
-        // {
-            // (*s)->TraceConnectWithoutContext("RemainingEnergy", MakeCallback(&RemainingEnergy));
-        // }
-
         // Connect trace sources
         for (auto j = endDevices.Begin(); j != endDevices.End(); ++j)
         {
@@ -481,9 +475,9 @@ main(int argc, char* argv[])
                 Ptr<MobilityModel> mobility = (*k)->GetObject<MobilityModel>();
                 Vector position = mobility->GetPosition();
                 if (scenario == "canyon") {
-                    position.z = 60;
+                    position.z = 1.4;
                 } else if (scenario == "etoile") {
-                    position.z = 30;
+                    position.z = 1.4;
                 }
                 mobility->SetPosition(position);
                 rxPower = channel->GetRxPower(10, gw_mobility, mobility);
