@@ -154,7 +154,6 @@ plt.savefig(f"3D_preview_{args.scenario}.pdf")
 
 plt.close()
 
-print(rm.path_gain.shape)
 # Save the radio map (dB) into a npy
 path_gain_db = 10*np.log10(rm.path_gain)
 for i in range(path_gain_db.shape[0]):
@@ -162,8 +161,8 @@ for i in range(path_gain_db.shape[0]):
     filename = f"../path_gain_results/sionna/{args.scenario}/{i}.csv"
     with open(filename, "w") as f:
         for j in range(path_gain_db.shape[0]):
-            path_gain = path_gain_db[i][rm.tx_cell_indices[0][j]-1][rm.tx_cell_indices[1][j]-1]
-            f.write(f"{positions[coord_counter][0]},{positions[coord_counter][1]},{z},{path_gain}\n") # 
+            path_gain = path_gain_db[i][rm.tx_cell_indices[1][j]-1][rm.tx_cell_indices[0][j]-1]
+            f.write(f"{positions[coord_counter][0]},{positions[coord_counter][1]},{z},{path_gain}\n")
             coord_counter += 1
 
 
