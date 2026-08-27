@@ -68,7 +68,7 @@ def config_scene(num_rows, num_cols):
         grid_size = 13
         camera_position = [0, 0, 250]
     scene.bandwidth = 1e6
-    scene.frequency = 1e9 # MHz
+    scene.frequency = 1e9 # Hz
 
     # Configure antenna arrays for all transmitters and receivers
     scene.tx_array = PlanarArray(
