@@ -1,5 +1,8 @@
 """
 Script to generate ray tracing datasets
+Author: 
+- Cláudio Modesto
+- Lucas Mozart
 """
 
 import os
@@ -25,9 +28,7 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-
 rm_solver = RadioMapSolver()
-
 
 # Create the output directory
 PG_PATH_NAME = f"../path_gain_results/sionna/{args.scenario}"
@@ -152,16 +153,16 @@ fig = scene.render(camera=cam,
                     rm_tx=selected_gateways)
 
 plt.savefig(f"3D_preview_{args.scenario}.pdf")
-
 plt.close()
 
-# Save the radio map (dB) into a npy
+# Save the radio map (dB) into a csv
 path_gain_db = 10*np.log10(rm.path_gain)
 for i in range(path_gain_db.shape[0]):
     coord_counter = 0
     filename = f"../path_gain_results/sionna/{args.scenario}/{i}.csv"
     with open(filename, "w") as f:
         for j in range(path_gain_db.shape[0]):
+            # Saving in the format (x, y)
             path_gain = path_gain_db[i][rm.tx_cell_indices[1][j]-1][rm.tx_cell_indices[0][j]-1]
             f.write(f"{positions[coord_counter][0]},{positions[coord_counter][1]},{z},{path_gain}\n")
             coord_counter += 1
@@ -174,13 +175,14 @@ for y in range(rm.tx_cell_indices.shape[1]):
     extra2 = rm.tx_cell_indices[1][y]
     coordinates.append([*base, extra1, extra2])
     
-# Saving the path gain in .txt files
+# Saving the path gain in .csv files
 coord_counter = 0
 with open(f"../path_gain_results/{args.scenario}_coordinates.csv", "w") as f:
     for c in coordinates:
-        f.write(f"{positions[coord_counter][0]},{positions[coord_counter][1]},{z},{c[4]},{c[3]}\n") # Saving in the format (x, y) -> indexes
+        f.write(f"{positions[coord_counter][0]},{positions[coord_counter][1]},{z},{c[4]},{c[3]}\n")         
         coord_counter += 1
 
 with open(f"../path_gain_results/{args.scenario}_measured_position.csv", "w") as f:
     for c in coordinates:
         f.write(f"{c[1]},{c[0]},{z},{c[4]},{c[3]}\n") # Saving in the format (x, y) -> indexes
+
