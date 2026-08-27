@@ -7,8 +7,6 @@ Authors:
 - Cláudio Modesto
 - Lucas Mozart
 """
-
-
 import os
 import glob
 import pathlib
@@ -108,7 +106,6 @@ devices_df = pd.read_csv(f"path_gain_results/{args.scenario}_coordinates.csv", h
 # end_device positions -> cell indexes
 end_devices_cells = list(zip(devices_df[3], devices_df[4]))
 
-
 def extract_number(filename):
     match = re.search(r'(\d+)', filename)
     return int(match.group(1)) if match else 999999
@@ -133,6 +130,7 @@ if args.scenario == "etoile":
                 62, 63, 64, 68, 69, 70, 71,
                 72, 73, 74, 75, 81, 82, 83,
                 86, 87, 91, 98]
+
 elif args.scenario == "canyon":
     d_index = [3, 4, 8, 9, 16, 17, 21, 22, 29,
                30, 34, 35, 39, 40, 41, 42, 43,

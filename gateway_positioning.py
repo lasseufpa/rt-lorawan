@@ -111,6 +111,7 @@ if args.scenario == "etoile":
                 62, 63, 64, 68, 69, 70, 71,
                 72, 73, 74, 75, 81, 82, 83,
                 86, 87, 91, 98]
+
 elif args.scenario == "canyon":
     d_index = [3, 4, 8, 9, 16, 17, 21, 22, 29,
                30, 34, 35, 39, 40, 41, 42, 43,
@@ -127,8 +128,6 @@ print("Number of ED: ", len(d_index))
 for p_gateway in range(G): # Power that a ED receivers from each gateway in all positions available
     for d, (ix, iy) in enumerate(end_devices_cells):
         rx_power[(d, p_gateway)] = float(path_gain_db[p_gateway][d][PATH_GAIN_COLUMN])
-
-print(d_index)
 
 # Solving -inf problem
 NO_SIGNAL = -1000
